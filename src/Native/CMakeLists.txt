@@ -1,20 +1,19 @@
 cmake_minimum_required(VERSION 2.8.12)
 
+project(Native)
+
+if (POLICY CMP0042)
+  cmake_policy(SET CMP0042 NEW) # MACOSX_RPATH enabled by default
+endif()
+
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_INSTALL_PREFIX $ENV{__CMakeBinDir})
 set(RESOURCES)
 
 # Include 'bin/obj' dir since it contains _version.h
-include_directories("${CMAKE_BINARY_DIR}/../../")
+include_directories("$ENV{__IntermediatesDir}")
 
 if(WIN32)
-    # There seems to be a bug in the latest VS2019
-    # which is adding /ZI (which conflicts with /guard:cf) instead of /Zi.
-	message("CMAKE_C_FLAGS_DEBUG is ${CMAKE_C_FLAGS_DEBUG}")
-	message("In a future version, if the CMake that ships with VS2019 no longer contains the /ZI flag, delete this message block and the two lines below.")
-    string(REPLACE "/ZI" "/Zi" CMAKE_C_FLAGS_DEBUG  ${CMAKE_C_FLAGS_DEBUG})
-    string(REPLACE "/ZI" "/Zi" CMAKE_CXX_FLAGS_DEBUG  ${CMAKE_CXX_FLAGS_DEBUG})
-
     add_definitions(-DWIN32)
     add_definitions(-D_WIN32=1)
     add_definitions(-DUNICODE -D_UNICODE)
@@ -43,6 +42,16 @@ if(WIN32)
     add_compile_options(/fp:precise)
     add_compile_options(/EHsc)
 
+    # From here below are warnings required to be explicitly enabled.
+    add_compile_options(/w34242)
+    add_compile_options(/w34244)
+    add_compile_options(/w34510)
+    add_compile_options(/w34610)
+    add_compile_options(/w34611)
+    add_compile_options(/w34700)
+    add_compile_options(/w34701)
+    add_compile_options(/w34703)
+
     if ($ENV{__BuildArch} STREQUAL "x86")
         add_compile_options(/Gz)
     endif ()
@@ -58,6 +67,8 @@ if(WIN32)
 
     # Debug build specific flags
     set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "/NOVCFEATURE")
+    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /NODEFAULTLIB:vcompd.lib /DEFAULTLIB:vcomp.lib")
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /NODEFAULTLIB:vcompd.lib /DEFAULTLIB:vcomp.lib")
 
     # Release build specific flags
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
@@ -72,12 +83,30 @@ if(WIN32)
     set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} /DEBUG /OPT:REF /OPT:ICF")
     set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO} /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib")
     set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib")
-    list(APPEND RESOURCES ${CMAKE_SOURCE_DIR}/../../Tools/NativeVersion.rc)
+    list(APPEND RESOURCES $ENV{__IntermediatesDir}/NativeVersion.rc)
 else()
     add_compile_options(-Wno-unused-local-typedef)
     add_compile_options(-fPIC)
     add_compile_options(-fvisibility=hidden)
     add_definitions(-Werror) # treat warnings as errors
+    add_compile_options(-g) # generate debug information
+
+    # On Unix CMAKE_BUILD_TYPE is not passed in as just Debug/Release, so manually adding the extra flags
+    if(${CMAKE_BUILD_TYPE} MATCHES "Release*")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -DNDEBUG")
+    endif()
+
+endif()
+
+# Get the version of the compiler that is in the file name for tool location.
+set (CLR_CMAKE_COMPILER_FILE_NAME_VERSION "")
+if (CMAKE_C_COMPILER MATCHES "-?[0-9]+(\\.[0-9]+)?$")
+  set(CLR_CMAKE_COMPILER_FILE_NAME_VERSION "${CMAKE_MATCH_0}")
+endif()
+
+# Set the architecture we are compiling for on APPLE. This lets you cross target from x86_64 -> arm64.
+if(APPLE)
+    set(CMAKE_OSX_ARCHITECTURES ${ARCHITECTURE})
 endif()
 
 # Older CMake doesn't support CMAKE_CXX_STANDARD and GCC/Clang need a switch to enable C++ 11
@@ -131,11 +160,18 @@ endif(CMAKE_SYSTEM_NAME STREQUAL SunOS)
 if(CLR_CMAKE_PLATFORM_UNIX)
     if(STRIP_SYMBOLS)
         find_program(STRIP strip)
-        if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-            find_program(DSYMUTIL dsymutil)
-        else(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-            find_program(OBJCOPY objcopy)
-        endif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+
+        if(CMAKE_SYSTEM_NAME STREQUAL Linux AND DEFINED CMAKE_TOOLCHAIN_FILE)
+            find_program(OBJCOPY
+                NAMES llvm-objcopy
+                llvm-objcopy${CLR_CMAKE_COMPILER_FILE_NAME_VERSION})
+        else(CMAKE_SYSTEM_NAME STREQUAL Linux AND DEFINED CMAKE_TOOLCHAIN_FILE)
+            if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+                find_program(DSYMUTIL dsymutil)
+            else(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+                find_program(OBJCOPY objcopy)
+            endif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+        endif(CMAKE_SYSTEM_NAME STREQUAL Linux AND DEFINED CMAKE_TOOLCHAIN_FILE)
     endif(STRIP_SYMBOLS)
 endif(CLR_CMAKE_PLATFORM_UNIX)
 
@@ -154,11 +190,21 @@ function(strip_symbols targetName outputFilename)
             if(CMAKE_SYSTEM_NAME STREQUAL Darwin)
                 set(strip_destination_file ${strip_source_file}.dwarf)
 
+                execute_process(
+                    COMMAND ${DSYMUTIL} --help
+                    OUTPUT_VARIABLE DSYMUTIL_HELP_OUTPUT
+                )
+
+                set(DSYMUTIL_OPTS "--flat")
+                if ("${DSYMUTIL_HELP_OUTPUT}" MATCHES "--minimize")
+                    list(APPEND DSYMUTIL_OPTS "--minimize")
+                endif ()
+
                 add_custom_command(
                     TARGET ${targetName}
                     POST_BUILD
                     VERBATIM
-                    COMMAND ${DSYMUTIL} --flat --minimize ${strip_source_file}
+                    COMMAND ${DSYMUTIL} ${DSYMUTIL_OPTS} ${strip_source_file}
                     COMMAND ${STRIP} -u -r ${strip_source_file}
                     COMMENT Stripping symbols from ${strip_source_file} into file ${strip_destination_file}
                 )
@@ -193,9 +239,39 @@ function(install_library_and_symbols targetName)
     endif()
 endfunction()
 
-add_subdirectory(CpuMathNative)
-add_subdirectory(FastTreeNative)
+if (${ARCHITECTURE} STREQUAL "arm")
+    add_compile_options(-mthumb)
+    add_compile_options(-fPIC)
+    add_compile_options(-march=armv7-a)
+
+    if (NOT DEFINED CLR_ARM_FPU_TYPE)
+        set (CLR_ARM_FPU_TYPE vfpv3)
+    endif (NOT DEFINED CLR_ARM_FPU_TYPE)
+
+    add_compile_options (-mfpu=${CLR_ARM_FPU_TYPE})
+    if (NOT DEFINED CLR_ARM_FPU_CAPABILITY)
+        set (CLR_ARM_FPU_CAPABILITY 0x7)
+    endif (NOT DEFINED CLR_ARM_FPU_CAPABILITY)
+endif()
+
+if(NOT ${ARCHITECTURE} MATCHES "arm.*")
+    add_subdirectory(CpuMathNative)
+    add_subdirectory(FastTreeNative)
+    add_subdirectory(MklProxyNative)
+    # TODO: once we fix the 4 intel MKL methods, SymSgdNative will need to go back in.
+    add_subdirectory(SymSgdNative)
+  endif()
+
+if(${ARCHITECTURE} MATCHES "[xX].*64")
+  add_subdirectory(OneDalNative)
+else()
+  if (DEFINED ONEDAL_DEVEL_PATH)
+    message("Path to OneDal library defined [${ONEDAL_DEVEL_PATH}] but it is not being built on this arch.")
+  endif()
+  if (DEFINED MKL_LIB_PATH)
+    message("Path to Intel MKL library defined [${MKL_LIB_PATH}] but it is not being built on this arch.")
+  endif()
+endif()
+
 add_subdirectory(LdaNative)
 add_subdirectory(MatrixFactorizationNative)
-add_subdirectory(SymSgdNative)
-add_subdirectory(MklProxyNative)

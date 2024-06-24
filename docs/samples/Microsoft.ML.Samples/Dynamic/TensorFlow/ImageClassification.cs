@@ -1,7 +1,10 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
 using ICSharpCode.SharpZipLib.GZip;
 using ICSharpCode.SharpZipLib.Tar;
 using Microsoft.ML;
@@ -22,7 +25,9 @@ namespace Samples.Dynamic
             string modelLocation = "resnet_v2_101_299_frozen.pb";
             if (!File.Exists(modelLocation))
             {
-                modelLocation = Download(@"https://storage.googleapis.com/download.tensorflow.org/models/tflite_11_05_08/resnet_v2_101.tgz", @"resnet_v2_101_299_frozen.tgz");
+                var downloadTask = Download(@"https://storage.googleapis.com/download.tensorflow.org/models/tflite_11_05_08/resnet_v2_101.tgz", @"resnet_v2_101_299_frozen.tgz");
+                downloadTask.Wait();
+                modelLocation = downloadTask.Result;
                 Unzip(Path.Join(Directory.GetCurrentDirectory(), modelLocation),
                     Directory.GetCurrentDirectory());
 
@@ -34,8 +39,8 @@ namespace Samples.Dynamic
             var idv = mlContext.Data.LoadFromEnumerable(data);
 
             // Create a ML pipeline.
-            var pipeline = mlContext.Model.LoadTensorFlowModel(modelLocation)
-                .ScoreTensorFlowModel(
+            using var model = mlContext.Model.LoadTensorFlowModel(modelLocation);
+            var pipeline = model.ScoreTensorFlowModel(
                 new[] { nameof(OutputScores.output) },
                 new[] { nameof(TensorData.input) }, addBatchDimensionInput: true);
 
@@ -71,7 +76,7 @@ namespace Samples.Dynamic
             //----------
         }
 
-        private const int imageHeight = 224; 
+        private const int imageHeight = 224;
         private const int imageWidth = 224;
         private const int numChannels = 3;
         private const int inputSize = imageHeight * imageWidth * numChannels;
@@ -95,7 +100,7 @@ namespace Samples.Dynamic
             // This can be any numerical data. Assume image pixel values.
             var image1 = Enumerable.Range(0, inputSize).Select(
                 x => (float)x / inputSize).ToArray();
-            
+
             var image2 = Enumerable.Range(0, inputSize).Select(
                 x => (float)(x + 10000) / inputSize).ToArray();
             return new TensorData[] { new TensorData() { input = image1 },
@@ -110,11 +115,18 @@ namespace Samples.Dynamic
             public float[] output { get; set; }
         }
 
-        private static string Download(string baseGitPath, string dataFile)
+        private static async Task<string> Download(string baseGitPath, string dataFile)
         {
-            using (WebClient client = new WebClient())
+            if (File.Exists(dataFile))
+                return dataFile;
+
+            using (HttpClient client = new HttpClient())
             {
-                client.DownloadFile(new Uri($"{baseGitPath}"), dataFile);
+                var response = await client.GetStreamAsync(new Uri($"{baseGitPath}")).ConfigureAwait(false);
+                using (var fs = new FileStream(dataFile, FileMode.CreateNew))
+                {
+                    await response.CopyToAsync(fs).ConfigureAwait(false);
+                }
             }
 
             return dataFile;
@@ -129,7 +141,7 @@ namespace Samples.Dynamic
             Stream inStream = File.OpenRead(path);
             Stream gzipStream = new GZipInputStream(inStream);
 
-            TarArchive tarArchive = TarArchive.CreateInputTarArchive(gzipStream);
+            TarArchive tarArchive = TarArchive.CreateInputTarArchive(gzipStream, Encoding.ASCII);
             tarArchive.ExtractContents(targetDir);
             tarArchive.Close();
 

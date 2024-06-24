@@ -8,6 +8,7 @@ using System.Linq;
 using Microsoft.ML;
 using Microsoft.ML.Calibrators;
 using Microsoft.ML.Data;
+using Microsoft.ML.Model.OnnxConverter;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.Trainers;
 
@@ -68,7 +69,7 @@ namespace Microsoft.ML.Calibrators
                 LabelColumn = TrainerUtils.MakeBoolScalarLabel(labelColumn);
             else
                 env.CheckParam(!calibratorTrainer.NeedsTraining, nameof(labelColumn), "For trained calibrators, " + nameof(labelColumn) + " must be specified.");
-            ScoreColumn = TrainerUtils.MakeR4ScalarColumn(scoreColumn); // Do we fanthom this being named anything else (renaming column)? Complete metadata?
+            ScoreColumn = TrainerUtils.MakeR4ScalarColumn(scoreColumn); // Do we fathom this being named anything else (renaming column)? Complete metadata?
 
             if (weightColumn != null)
                 WeightColumn = TrainerUtils.MakeR4ScalarWeightColumn(weightColumn);
@@ -142,7 +143,7 @@ namespace Microsoft.ML.Calibrators
             {
                 var calibrator = (TICalibrator)CalibratorUtils.TrainCalibrator(Host, ch,
                     _calibratorTrainer, input, LabelColumn.Name, ScoreColumn.Name, WeightColumn.Name);
-                return Create(Host, calibrator);
+                return Create(Host, calibrator, ScoreColumn.Name);
             }
         }
 
@@ -150,7 +151,7 @@ namespace Microsoft.ML.Calibrators
         /// Implemented by deriving classes that create a concrete calibrator.
         /// </summary>
         [BestFriend]
-        private protected abstract CalibratorTransformer<TICalibrator> Create(IHostEnvironment env, TICalibrator calibrator);
+        private protected abstract CalibratorTransformer<TICalibrator> Create(IHostEnvironment env, TICalibrator calibrator, string scoreColumnName);
     }
 
     /// <summary>
@@ -161,17 +162,19 @@ namespace Microsoft.ML.Calibrators
     /// where score can be viewed as a feature while probability is treated as the label.
     /// </summary>
     /// <typeparam name="TICalibrator">The <see cref="ICalibrator"/> used to transform the data.</typeparam>
-    public abstract class CalibratorTransformer<TICalibrator> : RowToRowTransformerBase, ISingleFeaturePredictionTransformer<TICalibrator>
+    public abstract class CalibratorTransformer<TICalibrator> : RowToRowTransformerBase, ISingleFeaturePredictionTransformer<TICalibrator>, ISingleFeaturePredictionTransformer
         where TICalibrator : class, ICalibrator
     {
         private readonly TICalibrator _calibrator;
         private readonly string _loaderSignature;
+        private readonly string _scoreColumnName;
 
-        private protected CalibratorTransformer(IHostEnvironment env, TICalibrator calibrator, string loaderSignature)
+        private protected CalibratorTransformer(IHostEnvironment env, TICalibrator calibrator, string loaderSignature, string scoreColumnName)
             : base(Contracts.CheckRef(env, nameof(env)).Register(nameof(CalibratorTransformer<TICalibrator>)))
         {
             _loaderSignature = loaderSignature;
             _calibrator = calibrator;
+            _scoreColumnName = scoreColumnName;
         }
 
         // Factory method for SignatureLoadModel.
@@ -185,10 +188,20 @@ namespace Microsoft.ML.Calibrators
 
             // *** Binary format ***
             // model: _calibrator
+            // scoreColumnName: _scoreColumnName
             ctx.LoadModel<TICalibrator, SignatureLoadModel>(env, out _calibrator, "Calibrator");
+            if (ctx.Header.ModelVerWritten >= 0x00010002)
+            {
+                _scoreColumnName = ctx.LoadString();
+            }
+            else
+            {
+                _scoreColumnName = DefaultColumnNames.Score;
+            }
         }
 
         string ISingleFeaturePredictionTransformer<TICalibrator>.FeatureColumnName => DefaultColumnNames.Score;
+        string ISingleFeaturePredictionTransformer.FeatureColumnName => ((ISingleFeaturePredictionTransformer<TICalibrator>)this).FeatureColumnName;
 
         DataViewType ISingleFeaturePredictionTransformer<TICalibrator>.FeatureColumnType => NumberDataViewType.Single;
 
@@ -204,44 +217,65 @@ namespace Microsoft.ML.Calibrators
 
             // *** Binary format ***
             // model: _calibrator
+            // scoreColumnName: _scoreColumnName
             ctx.SaveModel(_calibrator, "Calibrator");
+            ctx.SaveString(_scoreColumnName);
         }
 
-        private protected override IRowMapper MakeRowMapper(DataViewSchema schema) => new Mapper<TICalibrator>(this, _calibrator, schema);
+        private protected override IRowMapper MakeRowMapper(DataViewSchema schema) => new Mapper<TICalibrator>(this, _calibrator, schema, _scoreColumnName);
 
         private protected VersionInfo GetVersionInfo()
         {
             return new VersionInfo(
                 modelSignature: "CALTRANS",
-                verWrittenCur: 0x00010001, // Initial
+                // verWrittenCur: 0x00010001, // Initial
+                verWrittenCur: 0x00010002, // Added _scoreColumnName
                 verReadableCur: 0x00010001,
                 verWeCanReadBack: 0x00010001,
                 loaderSignature: _loaderSignature,
                 loaderAssemblyName: typeof(CalibratorTransformer<>).Assembly.FullName);
         }
 
-        private sealed class Mapper<TCalibrator> : MapperBase
+        private sealed class Mapper<TCalibrator> : MapperBase, ISaveAsOnnx
             where TCalibrator : class, ICalibrator
         {
-            private TCalibrator _calibrator;
+            private readonly TCalibrator _calibrator;
             private readonly int _scoreColIndex;
-            private CalibratorTransformer<TCalibrator> _parent;
+            private readonly CalibratorTransformer<TCalibrator> _parent;
+            private readonly string _scoreColumnName;
 
-            internal Mapper(CalibratorTransformer<TCalibrator> parent, TCalibrator calibrator, DataViewSchema inputSchema) :
+            bool ICanSaveOnnx.CanSaveOnnx(OnnxContext ctx) => _calibrator is ICanSaveOnnx onnxMapper ? onnxMapper.CanSaveOnnx(ctx) : false;
+
+            internal Mapper(CalibratorTransformer<TCalibrator> parent, TCalibrator calibrator, DataViewSchema inputSchema, string scoreColumnName) :
                 base(parent.Host, inputSchema, parent)
             {
                 _calibrator = calibrator;
                 _parent = parent;
 
-                _scoreColIndex = inputSchema.GetColumnOrNull(DefaultColumnNames.Score)?.Index ?? -1;
+                _scoreColumnName = scoreColumnName;
+                _scoreColIndex = inputSchema.GetColumnOrNull(_scoreColumnName)?.Index ?? -1;
 
-                parent.Host.Check(_scoreColIndex > 0, "The data to calibrate contains no 'Score' column");
+                parent.Host.Check(_scoreColIndex >= 0, "The data to calibrate contains no \'" + scoreColumnName + "\' column.");
             }
 
             private protected override Func<int, bool> GetDependenciesCore(Func<int, bool> activeOutput)
                => col => col == _scoreColIndex;
 
             private protected override void SaveModel(ModelSaveContext ctx) => _parent.SaveModel(ctx);
+
+            void ISaveAsOnnx.SaveAsOnnx(OnnxContext ctx)
+            {
+                var scoreName = InputSchema[_scoreColIndex].Name;
+                var probabilityName = GetOutputColumnsCore()[0].Name;
+                Host.CheckValue(ctx, nameof(ctx));
+                if (_calibrator is ISingleCanSaveOnnx onnx)
+                {
+                    Host.Check(onnx.CanSaveOnnx(ctx), "Cannot be saved as ONNX.");
+                    scoreName = ctx.GetVariableName(scoreName);
+                    probabilityName = ctx.AddIntermediateVariable(NumberDataViewType.Single, probabilityName);
+                    onnx.SaveAsOnnx(ctx, new[] { scoreName, probabilityName }, ""); // No need for featureColumn
+                }
+            }
 
             protected override DataViewSchema.DetachedColumn[] GetOutputColumnsCore()
             {
@@ -260,7 +294,7 @@ namespace Microsoft.ML.Calibrators
                     builder.Add(setIdCol.Name, setIdType, annotation.GetGetter<uint>(setIdCol));
                     // Now, this next one I'm a little less sure about. It is entirely reasonable for someone to, say,
                     // try to calibrate the result of a regression or ranker training, or something else. But should we
-                    // just pass through this class just like that? Having throught through the alternatives I view this
+                    // just pass through this class just like that? Having thought through the alternatives I view this
                     // as the least harmful thing we could be doing, but it is something to consider I may be wrong
                     // about if it proves that it ever causes problems to, say, have something identified as a probability
                     // column but be marked as being a regression task, or what have you.
@@ -320,8 +354,8 @@ namespace Microsoft.ML.Calibrators
         }
 
         [BestFriend]
-        private protected override CalibratorTransformer<PlattCalibrator> Create(IHostEnvironment env, PlattCalibrator calibrator)
-            => new PlattCalibratorTransformer(env, calibrator);
+        private protected override CalibratorTransformer<PlattCalibrator> Create(IHostEnvironment env, PlattCalibrator calibrator, string scoreColumnName)
+            => new PlattCalibratorTransformer(env, calibrator, scoreColumnName);
     }
 
     /// <summary>
@@ -357,8 +391,8 @@ namespace Microsoft.ML.Calibrators
         }
 
         [BestFriend]
-        private protected override CalibratorTransformer<PlattCalibrator> Create(IHostEnvironment env, PlattCalibrator calibrator)
-            => new PlattCalibratorTransformer(env, calibrator);
+        private protected override CalibratorTransformer<PlattCalibrator> Create(IHostEnvironment env, PlattCalibrator calibrator, string scoreColumnName)
+            => new PlattCalibratorTransformer(env, calibrator, scoreColumnName);
     }
 
     /// <summary>
@@ -368,8 +402,8 @@ namespace Microsoft.ML.Calibrators
     {
         internal const string LoadName = "PlattCalibratTransf";
 
-        internal PlattCalibratorTransformer(IHostEnvironment env, PlattCalibrator calibrator)
-          : base(env, calibrator, LoadName)
+        internal PlattCalibratorTransformer(IHostEnvironment env, PlattCalibrator calibrator, string scoreColumnName)
+          : base(env, calibrator, LoadName, scoreColumnName)
         {
         }
 
@@ -381,7 +415,7 @@ namespace Microsoft.ML.Calibrators
     }
 
     /// <summary>
-    /// The naive binning-based calbirator estimator.
+    /// The naive binning-based calibrator estimator.
     /// </summary>
     /// <remarks>
     /// It divides the range of the outputs into equally sized bins. In each bin,
@@ -408,8 +442,8 @@ namespace Microsoft.ML.Calibrators
         }
 
         [BestFriend]
-        private protected override CalibratorTransformer<NaiveCalibrator> Create(IHostEnvironment env, NaiveCalibrator calibrator)
-            => new NaiveCalibratorTransformer(env, calibrator);
+        private protected override CalibratorTransformer<NaiveCalibrator> Create(IHostEnvironment env, NaiveCalibrator calibrator, string scoreColumnName)
+            => new NaiveCalibratorTransformer(env, calibrator, scoreColumnName);
     }
 
     /// <summary>
@@ -419,8 +453,8 @@ namespace Microsoft.ML.Calibrators
     {
         internal const string LoadName = "NaiveCalibratTransf";
 
-        internal NaiveCalibratorTransformer(IHostEnvironment env, NaiveCalibrator calibrator)
-          : base(env, calibrator, LoadName)
+        internal NaiveCalibratorTransformer(IHostEnvironment env, NaiveCalibrator calibrator, string scoreColumnName)
+          : base(env, calibrator, LoadName, scoreColumnName)
         {
         }
 
@@ -457,8 +491,8 @@ namespace Microsoft.ML.Calibrators
         }
 
         [BestFriend]
-        private protected override CalibratorTransformer<IsotonicCalibrator> Create(IHostEnvironment env, IsotonicCalibrator calibrator)
-            => new IsotonicCalibratorTransformer(env, calibrator);
+        private protected override CalibratorTransformer<IsotonicCalibrator> Create(IHostEnvironment env, IsotonicCalibrator calibrator, string scoreColumnName)
+            => new IsotonicCalibratorTransformer(env, calibrator, scoreColumnName);
 
     }
 
@@ -469,8 +503,8 @@ namespace Microsoft.ML.Calibrators
     {
         internal const string LoadName = "PavCalibratTransf";
 
-        internal IsotonicCalibratorTransformer(IHostEnvironment env, IsotonicCalibrator calibrator)
-          : base(env, calibrator, LoadName)
+        internal IsotonicCalibratorTransformer(IHostEnvironment env, IsotonicCalibrator calibrator, string scoreColumnName)
+          : base(env, calibrator, LoadName, scoreColumnName)
         {
         }
 

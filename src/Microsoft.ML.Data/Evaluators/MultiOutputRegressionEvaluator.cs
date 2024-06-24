@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -60,11 +60,11 @@ namespace Microsoft.ML.Data
             var score = schema.GetUniqueColumn(AnnotationUtils.Const.ScoreValueKind.Score);
             var t = score.Type as VectorDataViewType;
             if (t == null || !t.IsKnownSize || t.ItemType != NumberDataViewType.Single)
-                throw Host.ExceptSchemaMismatch(nameof(schema), "score", score.Name, "known-size vector of Single", t.ToString());
+                throw Host.ExceptSchemaMismatch(nameof(schema), "score", score.Name, "known-size vector of Single", score.Type.ToString());
             Host.Check(schema.Label.HasValue, "Could not find the label column");
             t = schema.Label.Value.Type as VectorDataViewType;
             if (t == null || !t.IsKnownSize || (t.ItemType != NumberDataViewType.Single && t.ItemType != NumberDataViewType.Double))
-                throw Host.ExceptSchemaMismatch(nameof(schema), "label", schema.Label.Value.Name, "known-size vector of Single or Double", t.ToString());
+                throw Host.ExceptSchemaMismatch(nameof(schema), "label", schema.Label.Value.Name, "known-size vector of Single or Double", schema.Label.Value.Type.ToString());
         }
 
         private protected override Aggregator GetAggregatorCore(RoleMappedSchema schema, string stratName)
@@ -548,7 +548,7 @@ namespace Microsoft.ML.Data
 
             var t = schema[LabelIndex].Type as VectorDataViewType;
             if (t == null || !t.IsKnownSize || (t.ItemType != NumberDataViewType.Single && t.ItemType != NumberDataViewType.Double))
-                throw Host.ExceptSchemaMismatch(nameof(schema), "label", LabelCol, "known-size vector of Single or Double", t.ToString());
+                throw Host.ExceptSchemaMismatch(nameof(schema), "label", LabelCol, "known-size vector of Single or Double", schema[LabelIndex].Type.ToString());
             labelType = new VectorDataViewType((PrimitiveDataViewType)t.ItemType, t.Size);
             var slotNamesType = new VectorDataViewType(TextDataViewType.Instance, t.Size);
             var builder = new DataViewSchema.Annotations.Builder();
@@ -557,7 +557,7 @@ namespace Microsoft.ML.Data
 
             t = schema[ScoreIndex].Type as VectorDataViewType;
             if (t == null || !t.IsKnownSize || t.ItemType != NumberDataViewType.Single)
-                throw Host.ExceptSchemaMismatch(nameof(schema), "score", ScoreCol, "known-size vector of Single", t.ToString());
+                throw Host.ExceptSchemaMismatch(nameof(schema), "score", ScoreCol, "known-size vector of Single", schema[ScoreIndex].Type.ToString());
             scoreType = new VectorDataViewType((PrimitiveDataViewType)t.ItemType, t.Size);
             builder = new DataViewSchema.Annotations.Builder();
             builder.AddSlotNames(t.Size, CreateSlotNamesGetter(schema, ScoreIndex, scoreType.Size, "Predicted"));
@@ -617,12 +617,12 @@ namespace Microsoft.ML.Data
             [Argument(ArgumentType.Multiple, HelpText = "Loss function", ShortName = "loss")]
             public ISupportRegressionLossFactory LossFunction = new SquaredLossFactory();
 
-            [Argument(ArgumentType.AtMostOnce, HelpText = "Supress labels and scores in per-instance outputs?", ShortName = "noScores")]
-            public bool SupressScoresAndLabels = false;
+            [Argument(ArgumentType.AtMostOnce, HelpText = "Suppress labels and scores in per-instance outputs?", ShortName = "noScores")]
+            public bool SuppressScoresAndLabels = false;
         }
 
         private readonly MultiOutputRegressionEvaluator _evaluator;
-        private readonly bool _supressScoresAndLabels;
+        private readonly bool _suppressScoresAndLabels;
 
         private protected override IEvaluator Evaluator => _evaluator;
 
@@ -631,7 +631,7 @@ namespace Microsoft.ML.Data
         {
             Host.CheckUserArg(args.LossFunction != null, nameof(args.LossFunction), "Loss function must be specified");
 
-            _supressScoresAndLabels = args.SupressScoresAndLabels;
+            _suppressScoresAndLabels = args.SuppressScoresAndLabels;
             var evalArgs = new MultiOutputRegressionEvaluator.Arguments();
             evalArgs.LossFunction = args.LossFunction;
             _evaluator = new MultiOutputRegressionEvaluator(Host, evalArgs);
@@ -643,7 +643,7 @@ namespace Microsoft.ML.Data
             Host.CheckParam(schema.Label != null, nameof(schema), "Schema must contain a label column");
 
             // The multi output regression evaluator outputs the label and score column if requested by the user.
-            if (!_supressScoresAndLabels)
+            if (!_suppressScoresAndLabels)
             {
                 yield return schema.Label.Value.Name;
 

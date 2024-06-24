@@ -1,7 +1,8 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.TensorFlow;
 using Tensorflow;
@@ -13,10 +14,11 @@ namespace Microsoft.ML.Transforms
     /// It provides some convenient methods to query model schema as well as
     /// creation of <see cref="TensorFlowEstimator"/> object.
     /// </summary>
-    public sealed class TensorFlowModel
+    public sealed class TensorFlowModel : IDisposable
     {
         internal Session Session { get; }
         internal string ModelPath { get; }
+        internal bool TreatOutputAsBatched { get; }
 
         private readonly IHostEnvironment _env;
 
@@ -26,11 +28,14 @@ namespace Microsoft.ML.Transforms
         /// <param name="env">An <see cref="IHostEnvironment"/> object.</param>
         /// <param name="session">TensorFlow session object.</param>
         /// <param name="modelLocation">Location of the model from where <paramref name="session"/> was loaded.</param>
-        internal TensorFlowModel(IHostEnvironment env, Session session, string modelLocation)
+        /// <param name="treatOutputAsBatched">If the first dimension of the output is unknown, should it be treated as batched or not.</param>
+        internal TensorFlowModel(IHostEnvironment env, Session session, string modelLocation, bool treatOutputAsBatched = true)
         {
             Session = session;
             ModelPath = modelLocation;
+            TreatOutputAsBatched = treatOutputAsBatched;
             _env = env;
+            _disposed = false;
         }
 
         /// <summary>
@@ -38,7 +43,7 @@ namespace Microsoft.ML.Transforms
         /// </summary>
         public DataViewSchema GetModelSchema()
         {
-            return TensorFlowUtils.GetModelSchema(_env, Session.graph);
+            return TensorFlowUtils.GetModelSchema(_env, Session.graph, TreatOutputAsBatched);
         }
 
         /// <summary>
@@ -47,7 +52,7 @@ namespace Microsoft.ML.Transforms
         /// </summary>
         public DataViewSchema GetInputSchema()
         {
-            return TensorFlowUtils.GetModelSchema(_env, Session.graph, "Placeholder");
+            return TensorFlowUtils.GetModelSchema(_env, Session.graph, TreatOutputAsBatched, "Placeholder");
         }
 
         /// <summary>
@@ -83,5 +88,19 @@ namespace Microsoft.ML.Transforms
         /// </example>
         public TensorFlowEstimator ScoreTensorFlowModel(string[] outputColumnNames, string[] inputColumnNames, bool addBatchDimensionInput = false)
             => new TensorFlowEstimator(_env, outputColumnNames, inputColumnNames, this, addBatchDimensionInput);
+
+        #region IDisposable Support
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            Session.Dispose();
+
+            _disposed = true;
+        }
+        #endregion
     }
 }

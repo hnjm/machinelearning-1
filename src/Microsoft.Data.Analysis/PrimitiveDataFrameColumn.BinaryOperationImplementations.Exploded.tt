@@ -1,0 +1,138 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ output extension=".cs" #>
+<#@ include file="ColumnArithmeticTemplate.ttinclude"#>
+<#@ include file="PrimitiveDataFrameColumn.BinaryOperations.Combinations.ttinclude" #>
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
+
+// Generated from DataFrameColumn.BinaryOperationImplementations.ExplodedColumns.tt. Do not modify directly
+
+using System;
+using System.Collections.Generic;
+
+namespace Microsoft.Data.Analysis
+{
+<# 
+bool supportedInPlace(string type1, string type2)
+{
+    string ret = GetBinaryOperationReturnType(type1, type2);
+    if (ret == type1)
+    {
+        return true;
+    }
+    return false;
+}
+#>
+<# 
+// This method generates implementations where the arguments are of the same type.
+void GenerateAllBinaryCombinationsForMethods()
+{
+ foreach (TypeCombination types in BinaryOperationCombinations.binaryOperationCombinations) 
+{ 
+    string returnType = types.ReturnColumnType;
+    string columnType = types.ThisColumnType;
+    string otherColumnType = types.OtherColumnType;
+    if (columnType != otherColumnType)
+    {
+        continue;
+    }
+    if (columnType != returnType)
+    {
+        continue;
+    }
+    Debug.Assert(returnType == otherColumnType);
+
+    string fullColumnType = GetCapitalizedPrimitiveTypes(columnType) + "DataFrameColumn";
+    string fullReturnType = fullColumnType;
+    string fullOtherColumnType = fullColumnType;
+#>
+
+    public partial class <#=fullColumnType#>
+    {
+        //Binary Operations
+<#
+    if (supportedInPlace(columnType, otherColumnType))
+    {
+#>
+        internal <#=fullReturnType#> HandleOperationImplementation(BinaryOperation operation, <#=fullOtherColumnType#> column, bool inPlace = false)
+<#
+    }
+    else
+    {
+#>
+        internal <#=fullReturnType#> HandleOperationImplementation(BinaryOperation operation, <#=fullOtherColumnType#> column)
+<#
+    }
+#>
+        {
+            if (column.Length != Length)
+            {
+                throw new ArgumentException(Strings.MismatchedColumnLengths, nameof(column));
+            }
+            var newColumn = inPlace ? this : (<#=fullReturnType#>)Clone();
+            newColumn.ColumnContainer.HandleOperation(operation, column.ColumnContainer);
+            return newColumn;
+        }
+
+        //Binary Scalar Operations
+        internal <#=fullReturnType#> HandleOperationImplementation(BinaryOperation operation, <#=otherColumnType#> right, bool inPlace = false)
+        {
+            var newColumn = inPlace ? this : (<#=fullReturnType#>)Clone();
+            newColumn.ColumnContainer.HandleOperation(operation, right);
+            return newColumn;
+        }
+
+        internal <#=fullReturnType#> HandleReverseOperationImplementation(BinaryOperation operation, <#=otherColumnType#> right, bool inPlace = false)
+        {
+            var newColumn = inPlace ? this : (<#=fullReturnType#>)Clone();
+            newColumn.ColumnContainer.HandleReverseOperation(operation, right);
+            return newColumn;
+        }
+    }
+<# 
+} 
+}
+#>
+<# 
+void GenerateAllComparisonCombinationsForMethods()
+{
+ foreach (TypeCombination types in ComparisonOperationCombinations.comparisonOperationCombinations) 
+ {
+    string columnType = types.ThisColumnType;
+    string otherColumnType = types.OtherColumnType;
+    if (columnType != otherColumnType)
+    {
+        continue;
+    }
+    
+    string fullColumnType = GetCapitalizedPrimitiveTypes(columnType) + "DataFrameColumn";
+    string fullOtherColumnType = GetCapitalizedPrimitiveTypes(otherColumnType) + "DataFrameColumn";
+#>
+
+    public partial class <#=fullColumnType#>
+    {
+        internal BooleanDataFrameColumn HandleOperationImplementation(ComparisonOperation operation, <#=fullOtherColumnType#> column)
+        {
+            return new BooleanDataFrameColumn(Name, ColumnContainer.HandleOperation(operation, column.ColumnContainer));
+        }
+
+        internal BooleanDataFrameColumn HandleOperationImplementation(ComparisonOperation operation, <#=otherColumnType#> value)
+        {
+            return new BooleanDataFrameColumn(Name, ColumnContainer.HandleOperation(operation, value));
+        }
+    }
+<# 
+ }
+ }
+#>
+<#
+GenerateAllBinaryCombinationsForMethods();
+GenerateAllComparisonCombinationsForMethods();
+#>
+}

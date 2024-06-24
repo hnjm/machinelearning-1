@@ -1,4 +1,4 @@
-﻿// Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -19,6 +19,11 @@ namespace Microsoft.ML.AutoML
             if (columnName == columnInfo.ExampleWeightColumnName)
             {
                 return ColumnPurpose.Weight;
+            }
+
+            if (columnName == columnInfo.GroupIdColumnName)
+            {
+                return ColumnPurpose.GroupId;
             }
 
             if (columnName == columnInfo.SamplingKeyColumnName)
@@ -96,6 +101,9 @@ namespace Microsoft.ML.AutoML
                     case ColumnPurpose.ItemId:
                         columnInfo.ItemIdColumnName = column.name;
                         break;
+                    case ColumnPurpose.GroupId:
+                        columnInfo.GroupIdColumnName = column.name;
+                        break;
                     case ColumnPurpose.TextFeature:
                         columnInfo.TextColumnNames.Add(column.name);
                         break;
@@ -123,6 +131,7 @@ namespace Microsoft.ML.AutoML
             AddStringToListIfNotNull(columnNames, columnInformation.LabelColumnName);
             AddStringToListIfNotNull(columnNames, columnInformation.UserIdColumnName);
             AddStringToListIfNotNull(columnNames, columnInformation.ItemIdColumnName);
+            AddStringToListIfNotNull(columnNames, columnInformation.GroupIdColumnName);
             AddStringToListIfNotNull(columnNames, columnInformation.ExampleWeightColumnName);
             AddStringToListIfNotNull(columnNames, columnInformation.SamplingKeyColumnName);
             AddStringsToListIfNotNull(columnNames, columnInformation.CategoricalColumnNames);

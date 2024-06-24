@@ -27,7 +27,12 @@ namespace Microsoft.ML.CpuMath.PerformanceTests
         internal AlignedArray testSrcVectorAligned;
         internal AlignedArray testDstVectorAligned;
 
-        protected float[] src, dst, original, src1, src2, result;
+        protected float[] src;
+        protected float[] dst;
+        protected float[] original;
+        protected float[] src1;
+        protected float[] src2;
+        protected float[] result;
         protected int[] idx;
         protected int[] matrixIdx;
 
@@ -43,13 +48,13 @@ namespace Microsoft.ML.CpuMath.PerformanceTests
         private int GetSeed()
         {
             int seed = DefaultSeed;
-            string CPUMATH_SEED = Environment.GetEnvironmentVariable("CPUMATH_SEED");
+            string cpumathSeed = Environment.GetEnvironmentVariable("CPUMATH_SEED");
 
-            if (CPUMATH_SEED != null)
+            if (cpumathSeed != null)
             {
-                if (!int.TryParse(CPUMATH_SEED, out seed))
+                if (!int.TryParse(cpumathSeed, out seed))
                 {
-                    if (string.Equals(CPUMATH_SEED, "random", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(cpumathSeed, "random", StringComparison.OrdinalIgnoreCase))
                     {
                         seed = new Random().Next();
                     }
@@ -100,7 +105,7 @@ namespace Microsoft.ML.CpuMath.PerformanceTests
             }
 
             testMatrixAligned = new AlignedArray(matrixLength * matrixLength, align);
-            testMatrixAligned.CopyFrom(src.AsSpan(0, (matrixLength - 1) * ( matrixLength - 1)));
+            testMatrixAligned.CopyFrom(src.AsSpan(0, (matrixLength - 1) * (matrixLength - 1)));
 
             testSrcVectorAligned = new AlignedArray(matrixLength, align);
             testSrcVectorAligned.CopyFrom(src1.AsSpan(0, matrixLength - 1)); // odd input

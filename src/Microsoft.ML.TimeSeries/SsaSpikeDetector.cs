@@ -139,7 +139,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
         }
 
         // Factory method for SignatureLoadModel.
-        private static SsaSpikeDetector Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static SsaSpikeDetector Create(IHostEnvironment env, ModelLoadContext ctx)
         {
             Contracts.CheckValue(env, nameof(env));
             env.CheckValue(ctx, nameof(ctx));
@@ -148,7 +148,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
             return new SsaSpikeDetector(env, ctx);
         }
 
-        internal SsaSpikeDetector(IHostEnvironment env, ModelLoadContext ctx)
+        private SsaSpikeDetector(IHostEnvironment env, ModelLoadContext ctx)
             : base(env, ctx, LoaderSignature)
         {
             // *** Binary format ***
@@ -195,6 +195,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
     /// | Does this estimator need to look at the data to train its parameters? | Yes |
     /// | Input column data type | <xref:System.Single> |
     /// | Output column data type | 3-element vector of <xref:System.Double> |
+    /// | Exportable to ONNX | No |
     ///
     /// [!include[io](~/../docs/samples/docs/api-reference/time-series-props.md)]
     ///
@@ -206,7 +207,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
     /// ]]>
     /// </format>
     /// </remarks>
-    /// <seealso cref="Microsoft.ML.TimeSeriesCatalog.DetectSpikeBySsa(Microsoft.ML.TransformsCatalog,System.String,System.String,System.Int32,System.Int32,System.Int32,System.Int32,Microsoft.ML.Transforms.TimeSeries.AnomalySide,Microsoft.ML.Transforms.TimeSeries.ErrorFunction)" />
+    /// <seealso cref="Microsoft.ML.TimeSeriesCatalog.DetectSpikeBySsa(Microsoft.ML.TransformsCatalog,System.String,System.String,System.Double,System.Int32,System.Int32,System.Int32,Microsoft.ML.Transforms.TimeSeries.AnomalySide,Microsoft.ML.Transforms.TimeSeries.ErrorFunction)" />
     public sealed class SsaSpikeEstimator : IEstimator<SsaSpikeDetector>
     {
         private readonly IHost _host;
@@ -227,7 +228,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
         /// <param name="errorFunction">The function used to compute the error between the expected and the observed value.</param>
         internal SsaSpikeEstimator(IHostEnvironment env,
             string outputColumnName,
-            int confidence,
+            double confidence,
             int pvalueHistoryLength,
             int trainingWindowSize,
             int seasonalityWindowSize,
@@ -235,16 +236,16 @@ namespace Microsoft.ML.Transforms.TimeSeries
             AnomalySide side = AnomalySide.TwoSided,
             ErrorFunction errorFunction = ErrorFunction.SignedDifference)
             : this(env, new SsaSpikeDetector.Options
-                {
-                    Source = inputColumnName ?? outputColumnName,
-                    Name = outputColumnName,
-                    Confidence = confidence,
-                    PvalueHistoryLength = pvalueHistoryLength,
-                    TrainingWindowSize = trainingWindowSize,
-                    SeasonalWindowSize = seasonalityWindowSize,
-                    Side = side,
-                    ErrorFunction = errorFunction
-                })
+            {
+                Source = inputColumnName ?? outputColumnName,
+                Name = outputColumnName,
+                Confidence = confidence,
+                PvalueHistoryLength = pvalueHistoryLength,
+                TrainingWindowSize = trainingWindowSize,
+                SeasonalWindowSize = seasonalityWindowSize,
+                Side = side,
+                ErrorFunction = errorFunction
+            })
         {
         }
 

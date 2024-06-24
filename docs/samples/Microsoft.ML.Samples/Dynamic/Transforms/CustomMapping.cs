@@ -6,6 +6,10 @@ namespace Samples.Dynamic
 {
     public static class CustomMapping
     {
+        // This example shows how to define and apply a custom mapping of input
+        // columns to output columns without defining a contract. Since a contract
+        // is not defined, the pipeline containing this mapping cannot be saved and
+        // loaded back.
         public static void Example()
         {
             // Create a new ML context, for ML.NET operations. It can be used for
@@ -24,7 +28,7 @@ namespace Samples.Dynamic
 
             // We define the custom mapping between input and output rows that will
             // be applied by the transformation.
-            Action<InputData, CustomMappingOutput > mapping =
+            Action<InputData, CustomMappingOutput> mapping =
                 (input, output) => output.IsUnderThirty = input.Age < 30;
 
             // Custom transformations can be used to transform data directly, or as

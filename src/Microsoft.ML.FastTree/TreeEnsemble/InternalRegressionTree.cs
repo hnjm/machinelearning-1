@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -23,12 +23,12 @@ namespace Microsoft.ML.Trainers.FastTree
     internal class InternalRegressionTree
     {
         private double _maxOutput;
-        private double[] _splitGain;
-        private double[] _gainPValue;
+        private readonly double[] _splitGain;
+        private readonly double[] _gainPValue;
         /// <summary>
         /// The value of this non-leaf node, prior to split when it was a leaf.
         /// </summary>
-        private double[] _previousLeafValue;
+        private readonly double[] _previousLeafValue;
 
         // for each non-leaf, we keep the following data
         public float[] DefaultValueForMissing;
@@ -51,7 +51,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// </summary>
         public int[][] CategoricalSplitFeatureRanges;
         // These are the thresholds based on the binned values of the raw features.
-        public uint[] Thresholds { get; }
+        public uint[] Thresholds { get; private set; }
         // These are the thresholds based on the raw feature values. Populated after training.
         public float[] RawThresholds { get; private set; }
         public double[] SplitGains { get { return _splitGain; } }
@@ -190,9 +190,9 @@ namespace Microsoft.ML.Trainers.FastTree
         }
 
         internal InternalRegressionTree(int[] splitFeatures, double[] splitGain, double[] gainPValue,
-            float[] rawThresholds, float[] defaultValueForMissing, int[] lteChild, int[] gtChild, double[] leafValues,
-            int[][] categoricalSplitFeatures, bool[] categoricalSplit)
-            : this()
+float[] rawThresholds, float[] defaultValueForMissing, int[] lteChild, int[] gtChild, double[] leafValues,
+int[][] categoricalSplitFeatures, bool[] categoricalSplit)
+: this()
         {
             Contracts.CheckParam(Utils.Size(splitFeatures) > 0, nameof(splitFeatures), "Number of split features must be positive");
 
@@ -201,6 +201,7 @@ namespace Microsoft.ML.Trainers.FastTree
             _splitGain = splitGain;
             _gainPValue = gainPValue;
             RawThresholds = rawThresholds;
+            Thresholds = new uint[NumLeaves - 1];
             DefaultValueForMissing = defaultValueForMissing;
             LteChild = lteChild;
             GtChild = gtChild;
@@ -820,7 +821,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
         private float GetFeatureValue(float x, int node)
         {
-            // Not need to convert missing vaules.
+            // Not need to convert missing values.
             if (DefaultValueForMissing == null)
                 return x;
 
@@ -1099,6 +1100,32 @@ namespace Microsoft.ML.Trainers.FastTree
             }
         }
 
+        public void PopulateThresholds(Dataset dataset)
+        {
+            var features = dataset.Flocks;
+
+            int numNodes = NumLeaves - 1;
+            for (int n = 0; n < numNodes; n++)
+            {
+                int flock;
+                int subfeature;
+                dataset.MapFeatureToFlockAndSubFeature(SplitFeatures[n], out flock, out subfeature);
+                if (CategoricalSplit[n] == false)
+                {
+                    uint numBins = (uint)dataset.Flocks[flock].BinUpperBounds(subfeature).Length;
+                    for (uint i = 1; i < numBins; ++i)
+                    {
+                        double rawThreshold = dataset.Flocks[flock].BinUpperBounds(subfeature)[i];
+                        if (RawThresholds[n] < rawThreshold)
+                        {
+                            Thresholds[n] = i;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         public void RemapFeatures(int[] oldToNewFeatures)
         {
             Contracts.AssertValue(oldToNewFeatures);
@@ -1348,10 +1375,10 @@ namespace Microsoft.ML.Trainers.FastTree
             }
 
             // Just break it up into NumThreads chunks. This minimizes the number of recomputations
-            //  neccessary in the rowwise indexer.
+            //  necessary in the rowwise indexer.
             int innerLoopSize = 1 + dataset.NumDocs / BlockingThreadPool.NumThreads;   // +1 is to make sure we don't have a few left over at the end
             // REVIEW: This partitioning doesn't look optimal.
-            // Probably make sence to investigate better ways of splitting data?
+            // Probably make sense to investigate better ways of splitting data?
             var actions = new Action[(int)Math.Ceiling(1.0 * dataset.NumDocs / innerLoopSize)];
             var actionIndex = 0;
             for (int d = 0; d < dataset.NumDocs; d += innerLoopSize)
@@ -1373,10 +1400,10 @@ namespace Microsoft.ML.Trainers.FastTree
         public void AddOutputsToScores(Dataset dataset, double[] scores)
         {
             // Just break it up into NumThreads chunks. This minimizes the number of recomputations
-            //  neccessary in the rowwise indexer.
+            //  necessary in the rowwise indexer.
             int innerLoopSize = 1 + dataset.NumDocs / BlockingThreadPool.NumThreads;   // +1 is to make sure we don't have a few left over at the end
             // REVIEW: This partitioning doesn't look optimal.
-            // Probably make sence to investigate better ways of splitting data?
+            // Probably make sense to investigate better ways of splitting data?
             var actions = new Action[(int)Math.Ceiling(1.0 * dataset.NumDocs / innerLoopSize)];
             var actionIndex = 0;
             for (int d = 0; d < dataset.NumDocs; d += innerLoopSize)
@@ -1396,10 +1423,10 @@ namespace Microsoft.ML.Trainers.FastTree
         internal void AddOutputsToScores(Dataset dataset, double[] scores, int[] docIndices)
         {
             // Just break it up into NumThreads chunks. This minimizes the number of recomputations
-            //  neccessary in the rowwise indexer.
+            //  necessary in the rowwise indexer.
             int innerLoopSize = 1 + docIndices.Length / BlockingThreadPool.NumThreads;   // +1 is to make sure we don't have a few left over at the end
             // REVIEW: This partitioning doesn't look optimal.
-            // Probably make sence to investigate better ways of splitting data?
+            // Probably make sense to investigate better ways of splitting data?
             var actions = new Action[(int)Math.Ceiling(1.0 * docIndices.Length / innerLoopSize)];
             var actionIndex = 0;
             for (int d = 0; d < docIndices.Length; d += innerLoopSize)
@@ -1515,28 +1542,83 @@ namespace Microsoft.ML.Trainers.FastTree
             int node = 0;
             while (node >= 0)
             {
-                int ifeat = SplitFeatures[node];
-                var val = src.GetItemOrDefault(ifeat);
-                val = GetFeatureValue(val, node);
                 int otherWay;
-                if (val <= RawThresholds[node])
+                if (CategoricalSplit[node])
                 {
-                    otherWay = GtChild[node];
-                    node = LteChild[node];
+                    Contracts.Assert(CategoricalSplitFeatures != null);
+                    bool match = false;
+                    int selectedIndex = -1;
+                    int newNode = 0;
+                    foreach (var index in CategoricalSplitFeatures[node])
+                    {
+                        float fv = GetFeatureValue(src.GetItemOrDefault(index), node);
+                        if (fv > 0.0f)
+                        {
+                            match = true;
+                            selectedIndex = index; // We only expect at most one match
+                            break;
+                        }
+                    }
+
+                    // If the ghost got a smaller output, the contribution of the categorical features is positive, so
+                    // the contribution is true minus ghost.
+                    if (match)
+                    {
+                        newNode = GtChild[node];
+                        otherWay = LteChild[node];
+
+                        var ghostLeaf = GetLeafFrom(in src, otherWay);
+                        var ghostOutput = GetOutput(ghostLeaf);
+                        var diff = (float)(trueOutput - ghostOutput);
+                        foreach (var index in CategoricalSplitFeatures[node])
+                        {
+                            if (index == selectedIndex) // this index caused the input to go to the GtChild
+                                contributions.AddFeature(index, diff);
+                            else // All of the others wouldn't cause it
+                                contributions.AddFeature(index, -diff);
+                        }
+                    }
+                    else
+                    {
+                        newNode = LteChild[node];
+                        otherWay = GtChild[node];
+
+                        var ghostLeaf = GetLeafFrom(in src, otherWay);
+                        var ghostOutput = GetOutput(ghostLeaf);
+                        var diff = (float)(trueOutput - ghostOutput);
+
+                        // None of the indices caused the input to go to the GtChild,
+                        // So all of them caused it to go to the Lte.
+                        foreach (var index in CategoricalSplitFeatures[node])
+                            contributions.AddFeature(index, diff);
+                    }
+
+                    node = newNode;
                 }
                 else
                 {
-                    otherWay = LteChild[node];
-                    node = GtChild[node];
+                    int ifeat = SplitFeatures[node];
+                    var val = src.GetItemOrDefault(ifeat);
+                    val = GetFeatureValue(val, node);
+                    if (val <= RawThresholds[node])
+                    {
+                        otherWay = GtChild[node];
+                        node = LteChild[node];
+                    }
+                    else
+                    {
+                        otherWay = LteChild[node];
+                        node = GtChild[node];
+                    }
+
+                    // What if we went the other way?
+                    var ghostLeaf = GetLeafFrom(in src, otherWay);
+                    var ghostOutput = GetOutput(ghostLeaf);
+
+                    // If the ghost got a smaller output, the contribution of the feature is positive, so
+                    // the contribution is true minus ghost.
+                    contributions.AddFeature(ifeat, (float)(trueOutput - ghostOutput));
                 }
-
-                // What if we went the other way?
-                var ghostLeaf = GetLeafFrom(in src, otherWay);
-                var ghostOutput = GetOutput(ghostLeaf);
-
-                // If the ghost got a smaller output, the contribution of the feature is positive, so
-                // the contribution is true minus ghost.
-                contributions.AddFeature(ifeat, (float)(trueOutput - ghostOutput));
             }
         }
     }

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -8,7 +8,7 @@ using Microsoft.ML.Runtime;
 
 namespace Microsoft.ML.Trainers.FastTree
 {
-    //An interface that can be implemnted on
+    //An interface that can be implemented on
     internal interface IFastTrainingScoresUpdate
     {
         ScoreTracker GetUpdatedTrainingScores();
@@ -84,8 +84,11 @@ namespace Microsoft.ML.Trainers.FastTree
         public ScoreTracker GetScoreTracker(string name, Dataset set, double[] initScores)
         {
             //Fisrt check for duplicates maybe we already track scores for set dataset
-            foreach (var st in TrackedScores) if (st.Dataset == set)
+            foreach (var st in TrackedScores)
+            {
+                if (st.Dataset == set)
                     return st;
+            }
 
             ScoreTracker newTracker = ConstructScoreTracker(name, set, initScores);
             //add the constructed tracker to the list of scores we need to update

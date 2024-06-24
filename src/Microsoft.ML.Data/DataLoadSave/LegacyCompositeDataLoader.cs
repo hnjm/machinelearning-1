@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -130,7 +130,7 @@ namespace Microsoft.ML.Data
             if (Utils.Size(transformArgs) == 0)
                 return srcLoader;
 
-            string GetTagData(IComponentFactory<IDataView, IDataTransform> factory)
+            static string GetTagData(IComponentFactory<IDataView, IDataTransform> factory)
             {
                 // When coming from the command line, preserve the string arguments.
                 // For other factories, we aren't able to get the string.

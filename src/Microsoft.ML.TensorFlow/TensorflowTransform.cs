@@ -20,6 +20,7 @@ using NumSharp;
 using Tensorflow;
 using static Microsoft.ML.TensorFlow.TensorFlowUtils;
 using static Tensorflow.Binding;
+using Utils = Microsoft.ML.Internal.Utilities.Utils;
 
 [assembly: LoadableClass(TensorFlowTransformer.Summary, typeof(IDataTransform), typeof(TensorFlowTransformer),
     typeof(TensorFlowEstimator.Options), typeof(SignatureDataTransform), TensorFlowTransformer.UserName, TensorFlowTransformer.ShortName)]
@@ -37,11 +38,14 @@ using static Tensorflow.Binding;
 
 namespace Microsoft.ML.Transforms
 {
-    public sealed class TensorFlowTransformer : RowToRowTransformerBase
+    public sealed class TensorFlowTransformer : RowToRowTransformerBase, IDisposable
     {
+        private bool _isDisposed;
+
         private readonly string _savedModelPath;
         private readonly bool _isTemporarySavedModel;
         private readonly bool _addBatchDimensionInput;
+        private readonly bool _treatOutputAsBatched;
         internal readonly Session Session;
         internal readonly Runner Runner;
         internal readonly DataViewType[] OutputTypes;
@@ -52,7 +56,6 @@ namespace Microsoft.ML.Transforms
         internal readonly (Operation, int)[] TFOutputOperations;
         internal TF_Output[] TFInputNodes;
         internal TF_Output[] TFOutputNodes;
-        internal IntPtr[] TFOperations;
         internal Graph Graph => Session.graph;
 
         internal readonly string[] Inputs;
@@ -63,14 +66,23 @@ namespace Microsoft.ML.Transforms
         internal const string ShortName = "TFTransform";
         internal const string LoaderSignature = "TensorFlowTransform";
 
+        internal static class DefaultModelFileNames
+        {
+            public const string VariablesFolder = "variables";
+            public const string Index = "variables.index";
+            public const string Data = "variables.data-?????-of-?????";
+            public const string Graph = "saved_model.pb";
+        }
+
         private static VersionInfo GetVersionInfo()
         {
             return new VersionInfo(
                 modelSignature: "TENSFLOW",
                 //verWrittenCur: 0x00010001, // Initial
                 //verWrittenCur: 0x00010002,  // Added Support for Multiple Outputs and SavedModel.
-                verWrittenCur: 0x00010003,  // Added Support for adding batch dimension in inputs.
-                verReadableCur: 0x00010003,
+                //verWrittenCur: 0x00010003,  // Added Support for adding batch dimension in inputs.
+                verWrittenCur: 0x00010004,  // Added Support for treating batch as output or not.
+                verReadableCur: 0x00010004,
                 verWeCanReadBack: 0x00010001,
                 loaderSignature: LoaderSignature,
                 loaderAssemblyName: typeof(TensorFlowTransformer).Assembly.FullName);
@@ -80,16 +92,17 @@ namespace Microsoft.ML.Transforms
         /// Transform for scoring Tensorflow models. Input data column names/types must exactly match
         /// all model input names. Only the output columns specified will be generated.
         /// This convenience method avoids reloading of TensorFlow model.
-        /// It is useful in a situation where user has already loaded TensorFlow model using <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string)"/> for inspecting model schema.
+        /// It is useful in a situation where user has already loaded TensorFlow model using <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string, bool)"/> for inspecting model schema.
         /// </summary>
         /// <param name="env">The environment to use.</param>
-        /// <param name="tfModelInfo"> <see cref="TensorFlowModel"/> object created with <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string)"/>.</param>
+        /// <param name="tfModelInfo"> <see cref="TensorFlowModel"/> object created with <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string, bool)"/>.</param>
         /// <param name="outputColumnName">The output columns to generate. Names must match model specifications. Data types are inferred from model.</param>
         /// <param name="inputColumnName">The name of the input data columns. Must match model's input names. If set to <see langword="null"/>, the value of the <paramref name="outputColumnName"/> will be used as source.</param>
         /// <param name="addBatchDimensionInput">Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].
         /// This parameter is used to deal with models that have unknown shape but the internal operators in the model require data to have batch dimension as well.</param>
-        internal TensorFlowTransformer(IHostEnvironment env, TensorFlowModel tfModelInfo, string outputColumnName, string inputColumnName = null, bool addBatchDimensionInput = false)
-            : this(env, tfModelInfo.Session, new[] { outputColumnName }, new[] { inputColumnName ?? outputColumnName }, IsSavedModel(env, tfModelInfo.ModelPath) ? tfModelInfo.ModelPath : null, false, addBatchDimensionInput)
+        /// <param name="treatOutputAsBatched">If the first dimension of the output is unknown, should it be treated as batched or not.</param>
+        internal TensorFlowTransformer(IHostEnvironment env, TensorFlowModel tfModelInfo, string outputColumnName, string inputColumnName = null, bool addBatchDimensionInput = false, bool treatOutputAsBatched = true)
+            : this(env, tfModelInfo.Session, new[] { outputColumnName }, new[] { inputColumnName ?? outputColumnName }, IsSavedModel(env, tfModelInfo.ModelPath) ? tfModelInfo.ModelPath : null, false, addBatchDimensionInput, treatOutputAsBatched: treatOutputAsBatched)
         {
         }
 
@@ -97,16 +110,17 @@ namespace Microsoft.ML.Transforms
         /// Transform for scoring Tensorflow models. Input data column names/types must exactly match
         /// all model input names. Only the output columns specified will be generated.
         /// This convenience method avoids reloading of TensorFlow model.
-        /// It is useful in a situation where user has already loaded TensorFlow model using <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string)"/> for inspecting model schema.
+        /// It is useful in a situation where user has already loaded TensorFlow model using <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string, bool)"/> for inspecting model schema.
         /// </summary>
         /// <param name="env">The environment to use.</param>
-        /// <param name="tfModelInfo"> <see cref="TensorFlowModel"/> object created with <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string)"/>.</param>
+        /// <param name="tfModelInfo"> <see cref="TensorFlowModel"/> object created with <see cref="TensorFlowUtils.LoadTensorFlowModel(IHostEnvironment, string, bool)"/>.</param>
         /// <param name="inputColumnNames">The name of the input data columns. Must match model's input names.</param>
         /// <param name="outputColumnNames">The output columns to generate. Names must match model specifications. Data types are inferred from model.</param>
         /// <param name="addBatchDimensionInput">Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].
         /// This parameter is used to deal with models that have unknown shape but the internal operators in the model require data to have batch dimension as well.</param>
-        internal TensorFlowTransformer(IHostEnvironment env, TensorFlowModel tfModelInfo, string[] outputColumnNames, string[] inputColumnNames, bool addBatchDimensionInput = false)
-            : this(env, tfModelInfo.Session, outputColumnNames, inputColumnNames, IsSavedModel(env, tfModelInfo.ModelPath) ? tfModelInfo.ModelPath : null, false, addBatchDimensionInput)
+        /// <param name="treatOutputAsBatched">If the first dimension of the output is unknown, should it be treated as batched or not.</param>
+        internal TensorFlowTransformer(IHostEnvironment env, TensorFlowModel tfModelInfo, string[] outputColumnNames, string[] inputColumnNames, bool addBatchDimensionInput = false, bool treatOutputAsBatched = true)
+            : this(env, tfModelInfo.Session, outputColumnNames, inputColumnNames, IsSavedModel(env, tfModelInfo.ModelPath) ? tfModelInfo.ModelPath : null, false, addBatchDimensionInput, treatOutputAsBatched: treatOutputAsBatched)
         {
         }
 
@@ -120,6 +134,7 @@ namespace Microsoft.ML.Transforms
             // *** Binary format ***
             // byte: indicator for frozen models
             // byte: indicator for adding batch dimension in input
+            // byte: indicator for treating output as batched
             // stream: tensorFlow model.
             // int: number of input columns
             // for each input column
@@ -127,16 +142,16 @@ namespace Microsoft.ML.Transforms
             // int: number of output columns
             // for each output column
             //   int: id of output column name
-            GetModelInfo(env, ctx, out string[] inputs, out string[] outputs, out bool isFrozen, out bool addBatchDimensionInput);
+            GetModelInfo(env, ctx, out string[] inputs, out string[] outputs, out bool isFrozen, out bool addBatchDimensionInput, out bool treatOutputAsBatched);
             if (isFrozen)
             {
                 byte[] modelBytes = null;
                 if (!ctx.TryLoadBinaryStream("TFModel", r => modelBytes = r.ReadByteArray()))
                     throw env.ExceptDecode();
-                return new TensorFlowTransformer(env, LoadTFSession(env, modelBytes), outputs, inputs, null, false, addBatchDimensionInput);
+                return new TensorFlowTransformer(env, LoadTFSession(env, modelBytes), outputs, inputs, null, false, addBatchDimensionInput, treatOutputAsBatched: treatOutputAsBatched);
             }
 
-            var tempDirPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), nameof(TensorFlowTransformer) + "_" + Guid.NewGuid()));
+            var tempDirPath = Path.GetFullPath(Path.Combine(((IHostEnvironmentInternal)env).TempFilePath, nameof(TensorFlowTransformer) + "_" + Guid.NewGuid()));
             CreateFolderWithAclIfNotExists(env, tempDirPath);
             try
             {
@@ -162,7 +177,7 @@ namespace Microsoft.ML.Transforms
                     }
                 });
 
-                return new TensorFlowTransformer(env, GetSession(env, tempDirPath), outputs, inputs, tempDirPath, true, addBatchDimensionInput);
+                return new TensorFlowTransformer(env, GetSession(env, tempDirPath), outputs, inputs, tempDirPath, true, addBatchDimensionInput, treatOutputAsBatched: treatOutputAsBatched);
             }
             catch (Exception)
             {
@@ -234,7 +249,7 @@ namespace Microsoft.ML.Transforms
         private static IRowMapper Create(IHostEnvironment env, ModelLoadContext ctx, DataViewSchema inputSchema)
             => Create(env, ctx).MakeRowMapper(inputSchema);
 
-        private static void GetModelInfo(IHostEnvironment env, ModelLoadContext ctx, out string[] inputs, out string[] outputs, out bool isFrozen, out bool addBatchDimensionInput)
+        private static void GetModelInfo(IHostEnvironment env, ModelLoadContext ctx, out string[] inputs, out string[] outputs, out bool isFrozen, out bool addBatchDimensionInput, out bool treatOutputAsBatched)
         {
             isFrozen = true;
             bool isNonFrozenModelSupported = ctx.Header.ModelVerReadable >= 0x00010002;
@@ -245,6 +260,11 @@ namespace Microsoft.ML.Transforms
             bool isAddingBatchDimensionSupported = ctx.Header.ModelVerReadable >= 0x00010003;
             if (isAddingBatchDimensionSupported)
                 addBatchDimensionInput = ctx.Reader.ReadBoolByte();
+
+            treatOutputAsBatched = true;
+            bool isTreatingOutputAsBatchedSupported = ctx.Header.ModelVerReadable >= 0x00010004;
+            if (isTreatingOutputAsBatchedSupported)
+                treatOutputAsBatched = ctx.Reader.ReadBoolByte();
 
             var numInputs = ctx.Reader.ReadInt32();
             env.CheckDecode(numInputs > 0);
@@ -265,7 +285,7 @@ namespace Microsoft.ML.Transforms
 
         internal TensorFlowTransformer(IHostEnvironment env, Session session, string[] outputColumnNames,
             string[] inputColumnNames, string savedModelPath, bool isTemporarySavedModel,
-            bool addBatchDimensionInput, int batchSize = 1, TensorFlowEstimator.Options options = null, IDataView input = null)
+            bool addBatchDimensionInput, int batchSize = 1, TensorFlowEstimator.Options options = null, IDataView input = null, bool treatOutputAsBatched = true)
             : base(Contracts.CheckRef(env, nameof(env)).Register(nameof(TensorFlowTransformer)))
 
         {
@@ -277,10 +297,12 @@ namespace Microsoft.ML.Transforms
             _isTemporarySavedModel = isTemporarySavedModel;
             Session = session;
             _addBatchDimensionInput = addBatchDimensionInput;
+            _treatOutputAsBatched = treatOutputAsBatched;
             Inputs = inputColumnNames;
             Outputs = outputColumnNames;
+            tf.compat.v1.disable_eager_execution();
 
-            (TFOutputTypes, OutputTypes, TFOutputOperations) = GetOutputInfo(Host, Session, Outputs);
+            (TFOutputTypes, OutputTypes, TFOutputOperations) = GetOutputInfo(Host, Session, Outputs, treatOutputAsBatched);
             (TFInputTypes, TFInputShapes, TFInputOperations) = GetInputInfo(Host, Session, Inputs, batchSize);
 
             TFInputNodes = new TF_Output[Inputs.Length];
@@ -340,10 +362,10 @@ namespace Microsoft.ML.Transforms
         internal static TensorShape GetTensorShape(TF_Output output, Graph graph, Status status = null)
         {
             if (graph == IntPtr.Zero)
-                new ObjectDisposedException(nameof(graph));
+                throw new ObjectDisposedException(nameof(graph));
 
             var cstatus = status == null ? new Status() : status;
-            var n = c_api.TF_GraphGetTensorNumDims(graph, output, cstatus);
+            var n = c_api.TF_GraphGetTensorNumDims(graph, output, cstatus.Handle);
 
             cstatus.Check();
 
@@ -351,12 +373,12 @@ namespace Microsoft.ML.Transforms
                 return new TensorShape(new int[0]);
 
             var dims = new long[n];
-            c_api.TF_GraphGetTensorShape(graph, output, dims, dims.Length, cstatus);
+            c_api.TF_GraphGetTensorShape(graph, output, dims, dims.Length, cstatus.Handle);
             cstatus.Check();
             return new TensorShape(dims.Select(x => (int)x).ToArray());
         }
 
-        internal static (TF_DataType[] tfOutputTypes, DataViewType[] outputTypes, (Operation, int)[]) GetOutputInfo(IHost host, Session session, string[] outputs)
+        internal static (TF_DataType[] tfOutputTypes, DataViewType[] outputTypes, (Operation, int)[]) GetOutputInfo(IHost host, Session session, string[] outputs, bool treatOutputAsBatched)
         {
             var tfOutputTypes = new TF_DataType[outputs.Length];
             var outputTypes = new DataViewType[outputs.Length];
@@ -381,12 +403,16 @@ namespace Microsoft.ML.Transforms
                 // If there are other dimension that are unknown the transformer will return a variable length vector.
                 // This is the work around in absence of reshape transformer.
                 var idims = shape.dims;
-                int[] dims = shape.ndim > 0 ? idims.Skip(idims[0] == -1 ? 1 : 0).ToArray() : new[] { 0 };
+
+                int[] dims = idims;
+                if (treatOutputAsBatched)
+                {
+                    dims = shape.ndim > 0 ? idims.Skip(idims[0] == -1 ? 1 : 0).ToArray() : new int[0];
+                }
                 for (int j = 0; j < dims.Length; j++)
                     dims[j] = dims[j] == -1 ? 0 : dims[j];
                 if (dims == null || dims.Length == 0)
                 {
-                    dims = new[] { 1 };
                     outputTypes[i] = Tf2MlNetType(tfOutputType);
                 }
                 else
@@ -413,6 +439,7 @@ namespace Microsoft.ML.Transforms
             // *** Binary format ***
             // byte: indicator for frozen models
             // byte: indicator for adding batch dimension in input
+            // byte: indicator for treating output as batched
             // stream: tensorFlow model.
             // int: number of input columns
             // for each input column
@@ -423,13 +450,45 @@ namespace Microsoft.ML.Transforms
             var isFrozen = string.IsNullOrEmpty(_savedModelPath);
             ctx.Writer.WriteBoolByte(isFrozen);
             ctx.Writer.WriteBoolByte(_addBatchDimensionInput);
+            ctx.Writer.WriteBoolByte(_treatOutputAsBatched);
             if (isFrozen)
             {
-                Status status = new Status();
-                var buffer = Session.graph.ToGraphDef(status);
-                ctx.SaveBinaryStream("TFModel", w =>
+                using (var status = new Status())
+                using (var buffer = Session.graph.ToGraphDef(status))
                 {
-                    w.WriteByteArray(buffer.MemoryBlock.ToArray());
+                    ctx.SaveBinaryStream("TFModel", w =>
+                    {
+                        w.WriteByteArray(buffer.DangerousMemoryBlock.ToArray());
+                    });
+                }
+            }
+            else
+            {
+                ctx.SaveBinaryStream("TFSavedModel", w =>
+                {
+                    // only these files need to be saved.
+                    var modelFilePaths = new List<string>
+                    {
+                        Path.Combine(_savedModelPath, DefaultModelFileNames.Graph),
+                        Path.Combine(_savedModelPath, DefaultModelFileNames.VariablesFolder, DefaultModelFileNames.Index)
+                    };
+                    modelFilePaths.AddRange(Directory.GetFiles(Path.Combine(_savedModelPath, DefaultModelFileNames.VariablesFolder), DefaultModelFileNames.Data, SearchOption.TopDirectoryOnly));
+
+                    w.Write(modelFilePaths.Count);
+
+                    foreach (var fullPath in modelFilePaths)
+                    {
+                        var relativePath = fullPath.Substring(_savedModelPath.Length + 1);
+                        w.Write(relativePath);
+
+                        using (var fs = new FileStream(fullPath, FileMode.Open))
+                        {
+                            long fileLength = fs.Length;
+                            w.Write(fileLength);
+                            long actualWritten = fs.CopyRange(w.BaseStream, fileLength);
+                            Host.Assert(actualWritten == fileLength);
+                        }
+                    }
                 });
             }
 
@@ -444,27 +503,21 @@ namespace Microsoft.ML.Transforms
                 ctx.SaveNonEmptyString(colName);
         }
 
-        ~TensorFlowTransformer()
+        public void Dispose()
         {
-            Dispose(false);
-        }
+            if (_isDisposed)
+                return;
 
-        private void Dispose(bool disposing)
-        {
-            // Ensure that the Session is not null and it's handle is not Zero, as it may have already been disposed/finalized.
-            // Technically we shouldn't be calling this if disposing == false, since we're running in finalizer
-            // and the GC doesn't guarantee ordering of finalization of managed objects, but we have to make sure
-            // that the Session is closed before deleting our temporary directory.
             try
             {
+                if (Session?.graph != IntPtr.Zero)
+                {
+                    Session.graph.Dispose();
+                }
+
                 if (Session != null && Session != IntPtr.Zero)
                 {
                     Session.close(); // invoked Dispose()
-                }
-
-                if (Session != null && Session.graph != IntPtr.Zero)
-                {
-                    Session.graph.Dispose();
                 }
             }
             finally
@@ -473,6 +526,8 @@ namespace Microsoft.ML.Transforms
                 {
                     DeleteFolderWithRetries(Host, _savedModelPath);
                 }
+
+                _isDisposed = true;
             }
         }
 
@@ -502,20 +557,29 @@ namespace Microsoft.ML.Transforms
                         throw Host.Except("Variable length input columns not supported");
 
                     _isInputVector[i] = type is VectorDataViewType;
-                    if (!_isInputVector[i])
-                        throw Host.Except("Non-vector columns are not supported and should be loaded as vector columns of size 1");
-                    vecType = (VectorDataViewType)type;
                     var expectedType = Tf2MlNetType(_parent.TFInputTypes[i]);
                     if (type.GetItemType() != expectedType)
                         throw Host.ExceptSchemaMismatch(nameof(inputSchema), "input", _parent.Inputs[i], expectedType.ToString(), type.ToString());
                     var originalShape = _parent.TFInputShapes[i];
                     var shape = originalShape.dims;
 
-                    var colTypeDims = vecType.Dimensions.Select(dim => (int)dim).ToArray();
                     if (shape == null || (shape.Length == 0))
-                        _fullySpecifiedShapes[i] = new TensorShape(colTypeDims);
+                    {
+                        // for vector type input TensorShape should same to dim
+                        if (_isInputVector[i])
+                        {
+                            vecType = (VectorDataViewType)type;
+                            var colTypeDims = vecType.Dimensions.Select(dim => (int)dim).ToArray();
+                            _fullySpecifiedShapes[i] = new TensorShape(colTypeDims);
+                        }
+                        else
+                            // for primitive type use default TensorShape
+                            _fullySpecifiedShapes[i] = new TensorShape();
+                    }
                     else
                     {
+                        vecType = (VectorDataViewType)type;
+                        var colTypeDims = vecType.Dimensions.Select(dim => (int)dim).ToArray();
                         // If the column is one dimension we make sure that the total size of the TF shape matches.
                         // Compute the total size of the known dimensions of the shape.
                         int valCount = 1;
@@ -532,6 +596,18 @@ namespace Microsoft.ML.Transforms
                         if (typeValueCount % valCount != 0)
                             throw Contracts.Except($"Input shape mismatch: Input '{_parent.Inputs[i]}' has shape {originalShape.ToString()}, but input data is of length {typeValueCount}.");
 
+                        // This cover the 2-variable scenario e.g. [?, ?, ?, C] where we can assume typeDims provides the information of [W, H, C]
+                        // The shape will become [?, W, H, C]
+                        var originalShapeDims = originalShape.dims;
+                        var originalShapeNdim = originalShape.ndim;
+                        if (numOfUnkDim == 3 && colTypeDims.Length == 3 && originalShapeNdim == numOfUnkDim + 1 && originalShapeDims[1] == -1)
+                        {
+                            originalShapeDims[1] = colTypeDims[0];
+                            originalShapeDims[2] = colTypeDims[1];
+                            valCount *= originalShapeDims[1] * originalShapeDims[2];
+                            numOfUnkDim -= 2;
+                        }
+
                         // If the shape is multi-dimensional, we should be able to create the length of the vector by plugging
                         // in a single value for the unknown shapes. For example, if the shape is [?,?,3], then there should exist a value
                         // d such that d*d*3 is equal to the length of the input column.
@@ -540,8 +616,6 @@ namespace Microsoft.ML.Transforms
                             throw Contracts.Except($"Input shape mismatch: Input '{_parent.Inputs[i]}' has shape {originalShape.ToString()}, but input data is of length {typeValueCount}.");
 
                         // Fill in the unknown dimensions.
-                        var originalShapeNdim = originalShape.ndim;
-                        var originalShapeDims = originalShape.dims;
                         var l = new int[originalShapeNdim];
                         for (int ishape = 0; ishape < originalShapeNdim; ishape++)
                             l[ishape] = originalShapeDims[ishape] == -1 ? (int)d : originalShapeDims[ishape];
@@ -550,7 +624,10 @@ namespace Microsoft.ML.Transforms
 
                     if (_parent._addBatchDimensionInput)
                     {
-                        var l = new int[_fullySpecifiedShapes[i].ndim + 1];
+                        // ndim of default TensorShape is -1, make originDim to 0 in this case.
+                        // after addBatchDimension, input column will be changed: type -> type[]
+                        var originDim = _fullySpecifiedShapes[i].ndim < 0 ? 0 : _fullySpecifiedShapes[i].ndim;
+                        var l = new int[originDim + 1];
                         l[0] = 1;
                         for (int ishape = 1; ishape < l.Length; ishape++)
                             l[ishape] = _fullySpecifiedShapes[i].dims[ishape - 1];
@@ -561,9 +638,42 @@ namespace Microsoft.ML.Transforms
                 _runners = new ConcurrentBag<Runner>();
             }
 
+            private Delegate CreateGetter(DataViewRow input, int iinfo, Func<int, bool> activeOutput, OutputCache outputCache)
+            {
+                Host.AssertValue(input);
+
+                var activeOutputColNames = _parent.Outputs.Where((x, i) => activeOutput(i)).ToArray();
+
+                var type = Tf2MlNetType(_parent.TFOutputTypes[iinfo]).RawType;
+                Host.Assert(type == _parent.OutputTypes[iinfo].GetItemType().RawType);
+                var srcTensorGetters = GetTensorValueGetters(input, _inputColIndices, _isInputVector, _parent.TFInputTypes, _fullySpecifiedShapes);
+                return Utils.MarshalInvoke(MakeGetter<int>, type, input, iinfo, srcTensorGetters, activeOutputColNames, outputCache);
+            }
+
+            public override Delegate[] CreateGetters(DataViewRow input, Func<int, bool> activeOutput, out Action disposer)
+            {
+                Contracts.Assert(input.Schema == InputSchema);
+
+                OutputCache outputCacher = new OutputCache();
+
+                int n = OutputColumns.Value.Length;
+                var result = new Delegate[n];
+                for (int i = 0; i < n; i++)
+                {
+                    if (!activeOutput(i))
+                        continue;
+                    result[i] = CreateGetter(input, i, activeOutput, outputCacher);
+                }
+                disposer = () =>
+                {
+                    outputCacher.Dispose();
+                };
+                return result;
+            }
+
             private protected override void SaveModel(ModelSaveContext ctx) => _parent.SaveModel(ctx);
 
-            private class OutputCache
+            private class OutputCache : IDisposable
             {
                 public long Position;
                 public Dictionary<string, Tensor> Outputs;
@@ -572,21 +682,21 @@ namespace Microsoft.ML.Transforms
                     Position = -1;
                     Outputs = new Dictionary<string, Tensor>();
                 }
+
+                private bool _isDisposed;
+
+                public void Dispose()
+                {
+                    if (_isDisposed)
+                        return;
+                    foreach (var tensor in Outputs.Values)
+                        tensor.Dispose();
+                    _isDisposed = true;
+                }
             }
 
             protected override Delegate MakeGetter(DataViewRow input, int iinfo, Func<int, bool> activeOutput, out Action disposer)
-            {
-                disposer = null;
-                Host.AssertValue(input);
-
-                var outputCache = new OutputCache();
-                var activeOutputColNames = _parent.Outputs.Where((x, i) => activeOutput(i)).ToArray();
-
-                var type = Tf2MlNetType(_parent.TFOutputTypes[iinfo]).RawType;
-                Host.Assert(type == _parent.OutputTypes[iinfo].GetItemType().RawType);
-                var srcTensorGetters = GetTensorValueGetters(input, _inputColIndices, _isInputVector, _parent.TFInputTypes, _fullySpecifiedShapes);
-                return Utils.MarshalInvoke(MakeGetter<int>, type, input, iinfo, srcTensorGetters, activeOutputColNames, outputCache);
-            }
+                => throw new NotImplementedException("This should never be called!");
 
             private Delegate MakeGetter<T>(DataViewRow input, int iinfo, ITensorValueGetter[] srcTensorGetters, string[] activeOutputColNames, OutputCache outputCache) where T : unmanaged
             {
@@ -643,27 +753,15 @@ namespace Microsoft.ML.Transforms
                 {
                     if (_parent.Graph.graph_key != tf.get_default_graph().graph_key)
                         _parent.Session.graph.as_default();
-                    Runner runner = new Runner(_parent.Session);
+                    Runner runner = new Runner(_parent.Session, _parent.Inputs.ToArray(), _parent.Outputs.ToArray());
 
                     // Feed inputs to the graph.
-                     for (int i = 0; i < _parent.Inputs.Length; i++)
-                    {
-                        var tensor = srcTensorGetters[i].GetTensor();
-                        runner.AddInput(_parent.Inputs[i], tensor);
-                    }
-
-                    // Add outputs.
-                    for (int i = 0; i < _parent.Outputs.Length; i++)
-                        runner.AddOutputs(_parent.Outputs[i]);
+                    for (int i = 0; i < _parent.Inputs.Length; i++)
+                        runner.AddInput(srcTensorGetters[i].GetTensor(), i);
 
                     // Execute the graph.
                     var tensors = runner.Run();
-
-                    List<Tensor> inputTensors = runner.GetInputValues();
-                    foreach (Tensor inputTensor in inputTensors)
-                    {
-                        inputTensor.Dispose();
-                    }
+                    runner.Dispose();
 
                     Contracts.Assert(tensors.Length > 0);
 
@@ -730,11 +828,10 @@ namespace Microsoft.ML.Transforms
             {
                 _srcgetter = input.GetGetter<T>(input.Schema[colIndex]);
                 _tfShape = tfShape;
-                long size = 0;
+                long size = 1;
                 _position = 0;
-                if (tfShape.dims.Length != 0)
+                if (tfShape.dims != null && tfShape.dims.Length != 0)
                 {
-                    size = 1;
                     foreach (var dim in tfShape.dims)
                         size *= dim;
                 }
@@ -745,8 +842,7 @@ namespace Microsoft.ML.Transforms
             {
                 var scalar = default(T);
                 _srcgetter(ref scalar);
-                var tensor = new Tensor(new[] { scalar });
-                tensor.set_shape(_tfShape);
+                var tensor = TensorFlowUtils.CastDataAndReturnAsTensor(scalar);
                 return tensor;
             }
 
@@ -773,7 +869,7 @@ namespace Microsoft.ML.Transforms
             private T[] _denseData;
             private T[] _bufferedData;
             private int _position;
-            private long[] _dims;
+            private readonly long[] _dims;
             private readonly long _bufferedDataSize;
 
             public TensorValueGetterVec(DataViewRow input, int colIndex, TensorShape tfShape)
@@ -806,46 +902,8 @@ namespace Microsoft.ML.Transforms
                 // This is done to reduce memory allocation every time tensor is created.
                 _denseData = new T[_vBuffer.Length];
                 _vBuffer.CopyTo(_denseData);
-                var tensor = CastDataAndReturnAsTensor(_denseData);
+                var tensor = TensorFlowUtils.CastDataAndReturnAsTensor(_denseData, _tfShape);
                 return tensor;
-            }
-
-            private Tensor CastDataAndReturnAsTensor(T[] data)
-            {
-                if (typeof(T) == typeof(sbyte))
-                    return new Tensor((sbyte[])(object)data, _dims, TF_DataType.TF_INT8);
-                else if (typeof(T) == typeof(long))
-                    return new Tensor((long[])(object)data, _dims, TF_DataType.TF_INT64);
-                else if (typeof(T) == typeof(Int32))
-                    return new Tensor((Int32[])(object)data, _dims, TF_DataType.TF_INT32);
-                else if (typeof(T) == typeof(Int16))
-                    return new Tensor((Int16[])(object)data, _dims, TF_DataType.TF_INT16);
-                else if (typeof(T) == typeof(byte))
-                    return new Tensor((byte[])(object)data, _dims, TF_DataType.TF_UINT8);
-                else if (typeof(T) == typeof(ulong))
-                    return new Tensor((ulong[])(object)data, _dims, TF_DataType.TF_UINT64);
-                else if (typeof(T) == typeof(UInt32))
-                    return new Tensor((UInt32[])(object)data, _dims, TF_DataType.TF_UINT32);
-                else if (typeof(T) == typeof(UInt16))
-                    return new Tensor((UInt16[])(object)data, _dims, TF_DataType.TF_UINT16);
-                else if (typeof(T) == typeof(bool))
-                    return new Tensor((bool[])(object)data, _dims, TF_DataType.TF_BOOL);
-                else if (typeof(T) == typeof(float))
-                    return new Tensor((float[])(object)data, _dims, TF_DataType.TF_FLOAT);
-                else if (typeof(T) == typeof(double))
-                    return new Tensor((double[])(object)data, _dims, TF_DataType.TF_DOUBLE);
-                else if (typeof(T) == typeof(ReadOnlyMemory<char>))
-                {
-                    byte[][] bytes = new byte[_vBuffer.Length][];
-                    for (int i = 0; i < bytes.Length; i++)
-                    {
-                        bytes[i] = Encoding.UTF8.GetBytes(((ReadOnlyMemory<char>)(object)data[i]).ToArray());
-                    }
-
-                    return new Tensor(bytes, _tfShape.dims.Select(x => (long)x).ToArray());
-                }
-
-                return new Tensor(new NDArray(data, _tfShape));
             }
 
             public void BufferTrainingData()
@@ -858,7 +916,7 @@ namespace Microsoft.ML.Transforms
             public Tensor GetBufferedBatchTensor()
             {
                 _position = 0;
-                var tensor = CastDataAndReturnAsTensor(_bufferedData);
+                var tensor = TensorFlowUtils.CastDataAndReturnAsTensor(_denseData, _tfShape);
 
                 _bufferedData = new T[_bufferedDataSize];
                 return tensor;
@@ -906,6 +964,15 @@ namespace Microsoft.ML.Transforms
             /// </remarks>
             [Argument(ArgumentType.AtMostOnce, HelpText = "Add a batch dimension to the input e.g. input = [224, 224, 3] => [-1, 224, 224, 3].", SortOrder = 16)]
             public bool AddBatchDimensionInputs = false;
+
+            /// <summary>
+            /// If the first dimension of the output is unknown, should it be treated as batched or not. e.g. output = [-1] will be read as a vector of unknown length when this is false.
+            /// </summary>
+            /// <remarks>
+            /// This parameter is used to deal with models that have unknown output shape and it needs to be interpreted in ML.NET as a vector of unknown length and not as a batch dimension.
+            /// </remarks>
+            [Argument(ArgumentType.AtMostOnce, HelpText = "If the first dimension of the output is unknown, should it be treated as batched or not. e.g. output = [-1] will be read as a vector of unknown length when this is false.", SortOrder = 17)]
+            public bool TreatOutputAsBatched = true;
         }
 
         private readonly IHost _host;
@@ -927,7 +994,7 @@ namespace Microsoft.ML.Transforms
         }
 
         internal TensorFlowEstimator(IHostEnvironment env, Options options)
-            : this(env, options, TensorFlowUtils.LoadTensorFlowModel(env, options.ModelLocation))
+            : this(env, options, TensorFlowUtils.LoadTensorFlowModel(env, options.ModelLocation, options.TreatOutputAsBatched))
         {
         }
 
@@ -936,19 +1003,23 @@ namespace Microsoft.ML.Transforms
             _host = Contracts.CheckRef(env, nameof(env)).Register(nameof(TensorFlowEstimator));
             _options = options;
             _tensorFlowModel = tensorFlowModel;
-            var inputTuple = TensorFlowTransformer.GetInputInfo(_host, tensorFlowModel.Session, options.InputColumns);
+            if (!tensorFlowModel.TreatOutputAsBatched)
+                _options.TreatOutputAsBatched = tensorFlowModel.TreatOutputAsBatched;
+            tensorFlowModel.Session.graph.as_default();
+            var inputTuple = TensorFlowTransformer.GetInputInfo(_host, tensorFlowModel.Session, _options.InputColumns);
             _tfInputTypes = inputTuple.tfInputTypes;
-            var outputTuple = TensorFlowTransformer.GetOutputInfo(_host, tensorFlowModel.Session, options.OutputColumns);
+            var outputTuple = TensorFlowTransformer.GetOutputInfo(_host, tensorFlowModel.Session, _options.OutputColumns, _options.TreatOutputAsBatched);
             _outputTypes = outputTuple.outputTypes;
         }
 
-        private static Options CreateArguments(TensorFlowModel tensorFlowModel, string[] outputColumnNames, string[] inputColumnName, bool addBatchDimensionInput)
+        private static Options CreateArguments(TensorFlowModel tensorFlowModel, string[] outputColumnNames, string[] inputColumnName, bool addBatchDimensionInput, bool treatOutputAsBatched = true)
         {
             var options = new Options();
             options.ModelLocation = tensorFlowModel.ModelPath;
             options.InputColumns = inputColumnName;
             options.OutputColumns = outputColumnNames;
             options.AddBatchDimensionInputs = addBatchDimensionInput;
+            options.TreatOutputAsBatched = treatOutputAsBatched;
             return options;
         }
 
@@ -966,8 +1037,6 @@ namespace Microsoft.ML.Transforms
                 var input = _options.InputColumns[i];
                 if (!inputSchema.TryFindColumn(input, out var col))
                     throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input);
-                if (!(col.Kind == SchemaShape.Column.VectorKind.Vector))
-                    throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input, "vector", col.GetTypeString());
                 var expectedType = Tf2MlNetType(_tfInputTypes[i]);
                 if (col.ItemType != expectedType)
                     throw _host.ExceptSchemaMismatch(nameof(inputSchema), "input", input, expectedType.ToString(), col.ItemType.ToString());
@@ -990,7 +1059,7 @@ namespace Microsoft.ML.Transforms
             if (_transformer == null)
             {
                 _transformer = new TensorFlowTransformer(_host, _tensorFlowModel.Session, _options.OutputColumns, _options.InputColumns,
-                    IsSavedModel(_host, _options.ModelLocation) ? _options.ModelLocation : null, false, _options.AddBatchDimensionInputs);
+                    IsSavedModel(_host, _options.ModelLocation) ? _options.ModelLocation : null, false, _options.AddBatchDimensionInputs, treatOutputAsBatched: _options.TreatOutputAsBatched);
             }
             // Validate input schema.
             _transformer.GetOutputSchema(input.Schema);

@@ -2,10 +2,14 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.Data;
 using System.Data.SqlClient;
+using System.Data.SQLite;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using FluentAssertions;
 using Microsoft.ML.Data;
 using Microsoft.ML.RunTests;
 using Microsoft.ML.TestFramework;
@@ -16,6 +20,9 @@ using Xunit.Abstractions;
 
 namespace Microsoft.ML.Tests
 {
+    [CollectionDefinition(nameof(NoParallelizationDefinition), DisableParallelization = true)]
+    public class NoParallelizationDefinition { }
+    [Collection(nameof(NoParallelizationDefinition))]
     public class DatabaseLoaderTests : BaseTestClass
     {
         public DatabaseLoaderTests(ITestOutputHelper output)
@@ -26,16 +33,23 @@ namespace Microsoft.ML.Tests
         [LightGBMFact]
         public void IrisLightGbm()
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                // https://github.com/dotnet/machinelearning/issues/4156
+            DatabaseSource dbs = GetIrisDatabaseSource("SELECT * FROM {0}");
+            IrisLightGbmImpl(dbs);
+        }
+
+        [LightGBMFact]
+        public void IrisLightGbmWithTimeout()
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) //sqlite does not have built-in command for sleep
                 return;
-            }
+            DatabaseSource dbs = GetIrisDatabaseSource("WAITFOR DELAY '00:00:01'; SELECT * FROM {0}", 1);
+            var ex = Assert.Throws<System.Reflection.TargetInvocationException>(() => IrisLightGbmImpl(dbs));
+            Assert.Contains("Timeout", ex.InnerException.Message);
+        }
 
+        private void IrisLightGbmImpl(DatabaseSource dbs)
+        {
             var mlContext = new MLContext(seed: 1);
-
-            var connectionString = GetConnectionString(TestDatasets.irisDb.name);
-            var commandText = $@"SELECT * FROM ""{TestDatasets.irisDb.trainFilename}""";
 
             var loaderColumns = new DatabaseLoader.Column[]
             {
@@ -48,9 +62,7 @@ namespace Microsoft.ML.Tests
 
             var loader = mlContext.Data.CreateDatabaseLoader(loaderColumns);
 
-            var databaseSource = new DatabaseSource(SqlClientFactory.Instance, connectionString, commandText);
-
-            var trainingData = loader.Load(databaseSource);
+            var trainingData = loader.Load(dbs);
 
             IEstimator<ITransformer> pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label")
                 .Append(mlContext.Transforms.Concatenate("Features", "SepalLength", "SepalWidth", "PetalLength", "PetalWidth"))
@@ -82,22 +94,11 @@ namespace Microsoft.ML.Tests
         [LightGBMFact]
         public void IrisLightGbmWithLoadColumnName()
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                // https://github.com/dotnet/machinelearning/issues/4156
-                return;
-            }
-
             var mlContext = new MLContext(seed: 1);
-
-            var connectionString = GetConnectionString(TestDatasets.irisDb.name);
-            var commandText = $@"SELECT Label as [My Label], SepalLength, SepalWidth, PetalLength, PetalWidth FROM ""{TestDatasets.irisDb.trainFilename}""";
 
             var loader = mlContext.Data.CreateDatabaseLoader<IrisDataWithLoadColumnName>();
 
-            var databaseSource = new DatabaseSource(SqlClientFactory.Instance, connectionString, commandText);
-
-            var trainingData = loader.Load(databaseSource);
+            var trainingData = loader.Load(GetIrisDatabaseSource("SELECT Label as [My Label], SepalLength, SepalWidth, PetalLength, PetalWidth FROM {0}"));
 
             IEstimator<ITransformer> pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label")
                 .Append(mlContext.Transforms.Concatenate("Features", "SepalLength", "SepalWidth", "PetalLength", "PetalWidth"))
@@ -129,22 +130,11 @@ namespace Microsoft.ML.Tests
         [LightGBMFact]
         public void IrisVectorLightGbm()
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                // https://github.com/dotnet/machinelearning/issues/4156
-                return;
-            }
-
             var mlContext = new MLContext(seed: 1);
-
-            var connectionString = GetConnectionString(TestDatasets.irisDb.name);
-            var commandText = $@"SELECT * FROM ""{TestDatasets.irisDb.trainFilename}""";
 
             var loader = mlContext.Data.CreateDatabaseLoader<IrisVectorData>();
 
-            var databaseSource = new DatabaseSource(SqlClientFactory.Instance, connectionString, commandText);
-
-            var trainingData = loader.Load(databaseSource);
+            var trainingData = loader.Load(GetIrisDatabaseSource("SELECT * FROM {0}"));
 
             IEstimator<ITransformer> pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label")
                 .Append(mlContext.Transforms.Concatenate("Features", "SepalInfo", "PetalInfo"))
@@ -172,22 +162,11 @@ namespace Microsoft.ML.Tests
         [LightGBMFact]
         public void IrisVectorLightGbmWithLoadColumnName()
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                // https://github.com/dotnet/machinelearning/issues/4156
-                return;
-            }
-
             var mlContext = new MLContext(seed: 1);
-
-            var connectionString = GetConnectionString(TestDatasets.irisDb.name);
-            var commandText = $@"SELECT * FROM ""{TestDatasets.irisDb.trainFilename}""";
 
             var loader = mlContext.Data.CreateDatabaseLoader<IrisVectorDataWithLoadColumnName>();
 
-            var databaseSource = new DatabaseSource(SqlClientFactory.Instance, connectionString, commandText);
-
-            var trainingData = loader.Load(databaseSource);
+            var trainingData = loader.Load(GetIrisDatabaseSource("SELECT * FROM {0}"));
 
             IEstimator<ITransformer> pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label")
                 .Append(mlContext.Transforms.Concatenate("Features", "SepalInfo", "PetalInfo"))
@@ -212,25 +191,14 @@ namespace Microsoft.ML.Tests
             }).PredictedLabel);
         }
 
-        [Fact]
+        [X86X64FactAttribute("The SQLite un-managed code, SQLite.interop, only supports x86/x64 architectures.")]
         public void IrisSdcaMaximumEntropy()
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                // https://github.com/dotnet/machinelearning/issues/4156
-                return;
-            }
-
             var mlContext = new MLContext(seed: 1);
-
-            var connectionString = GetConnectionString(TestDatasets.irisDb.name);
-            var commandText = $@"SELECT * FROM ""{TestDatasets.irisDb.trainFilename}""";
 
             var loader = mlContext.Data.CreateDatabaseLoader<IrisData>();
 
-            var databaseSource = new DatabaseSource(SqlClientFactory.Instance, connectionString, commandText);
-
-            var trainingData = loader.Load(databaseSource);
+            var trainingData = loader.Load(GetIrisDatabaseSource("SELECT * FROM {0}"));
 
             var pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label")
                 .Append(mlContext.Transforms.Concatenate("Features", "SepalLength", "SepalWidth", "PetalLength", "PetalWidth"))
@@ -259,15 +227,77 @@ namespace Microsoft.ML.Tests
             }).PredictedLabel);
         }
 
-        private string GetTestDatabasePath(string databaseName)
+        [X86X64FactAttribute("The SQLite un-managed code, SQLite.interop, only supports x86/x64 architectures.")]
+        public void TestLoadDatetimeColumnWithNullValue()
         {
-            return Path.GetFullPath(Path.Combine("TestDatabases", $"{databaseName}.mdf"));
+            var connectionString = "DataSource=Dummy;Mode=Memory;Version=3;Timeout=120;Cache=Shared";
+            using (var connection = new SQLiteConnection(connectionString))
+            {
+                connection.Open();
+                using (var command = new SQLiteCommand(connection))
+                {
+                    // Make sure the table doesn't exist.
+                    command.CommandText = """
+                        BEGIN;
+                        DROP TABLE IF EXISTS Datetime;
+                        COMMIT;
+                        """;
+                    command.ExecuteNonQuery();
+
+                    command.CommandText = """
+                        BEGIN;
+                        CREATE TABLE IF NOT EXISTS Datetime (datetime Datetime NULL);
+                        INSERT INTO Datetime VALUES (NULL);
+                        INSERT INTO Datetime VALUES ('2018-01-01 00:00:00');
+                        COMMIT;
+                        """;
+                    command.ExecuteNonQuery();
+                }
+            }
+            var mlContext = new MLContext(seed: 1);
+            var loader = mlContext.Data.CreateDatabaseLoader(new DatabaseLoader.Column("datetime", DbType.DateTime, 0));
+            var source = new DatabaseSource(SQLiteFactory.Instance, connectionString, "SELECT datetime FROM Datetime");
+            var data = loader.Load(source);
+            var datetimes = data.GetColumn<DateTime>("datetime").ToArray();
+            datetimes.Count().Should().Be(2);
+
+            // Convert null value to DateTime.MinValue, aka 0001-01-01 00:00:00
+            // This is the default behavior of TextLoader as well.
+            datetimes[0].Should().Be(DateTime.MinValue);
+            datetimes[1].Should().Be(new DateTime(2018, 1, 1, 0, 0, 0));
         }
 
-        private string GetConnectionString(string databaseName)
+        /// <summary>
+        /// Non-Windows builds do not support SqlClientFactory/MSSQL databases. Hence, an equivalent
+        /// SQLite database is used on Linux and MacOS builds.
+        /// </summary>
+        /// <returns>Return the appropiate Iris DatabaseSource according to build OS.</returns>
+        private DatabaseSource GetIrisDatabaseSource(string command, int commandTimeoutInSeconds = 30)
         {
-            var databaseFile = GetTestDatabasePath(databaseName);
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return new DatabaseSource(
+                    SqlClientFactory.Instance,
+                    GetMSSQLConnectionString(TestDatasets.irisDb.name),
+                    String.Format(command, $@"""{TestDatasets.irisDb.trainFilename}"""),
+                    commandTimeoutInSeconds);
+            else
+                return new DatabaseSource(
+                    SQLiteFactory.Instance,
+                    GetSQLiteConnectionString(TestDatasets.irisDbSQLite.name),
+                    String.Format(command, TestDatasets.irisDbSQLite.trainFilename),
+                    commandTimeoutInSeconds);
+        }
+
+        private string GetMSSQLConnectionString(string databaseName)
+        {
+            var databaseFile = Path.GetFullPath(Path.Combine("TestDatabases", $"{databaseName}.mdf"));
             return $@"Data Source=(LocalDB)\MSSQLLocalDB;AttachDbFilename={databaseFile};Database={databaseName};Integrated Security=True;Connect Timeout=120";
+        }
+
+        private string GetSQLiteConnectionString(string databaseName)
+        {
+            var databaseFile = Path.GetFullPath(Path.Combine("TestDatabases", $"{databaseName}.sqlite"));
+            return $@"Data Source={databaseFile};Version=3;Read Only=True;Timeout=120;";
         }
 
         public class IrisData

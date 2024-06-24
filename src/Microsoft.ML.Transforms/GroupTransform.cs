@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -392,6 +392,9 @@ namespace Microsoft.ML.Transforms
             /// </summary>
             private sealed class GroupKeyColumnChecker
             {
+                private static readonly FuncStaticMethodInfo1<DataViewRow, int, Func<bool>> _makeSameCheckerMethodInfo
+                    = new FuncStaticMethodInfo1<DataViewRow, int, Func<bool>>(MakeSameChecker<int>);
+
                 public readonly Func<bool> IsSameKey;
 
                 private static Func<bool> MakeSameChecker<T>(DataViewRow row, int col)
@@ -425,9 +428,7 @@ namespace Microsoft.ML.Transforms
                     Contracts.AssertValue(row);
                     var type = row.Schema[col].Type;
 
-                    Func<DataViewRow, int, Func<bool>> del = MakeSameChecker<int>;
-                    var mi = del.GetMethodInfo().GetGenericMethodDefinition().MakeGenericMethod(type.RawType);
-                    IsSameKey = (Func<bool>)mi.Invoke(null, new object[] { row, col });
+                    IsSameKey = Utils.MarshalInvoke(_makeSameCheckerMethodInfo, type.RawType, row, col);
                 }
             }
 
@@ -617,7 +618,7 @@ namespace Microsoft.ML.Transforms
                 {
                     // Even if the result is false, we need to call every checker so that they can memorize
                     // the current key value.
-                    result = checker.IsSameKey() & result;
+                    result = checker.IsSameKey() && result;
                 }
                 return result;
             }

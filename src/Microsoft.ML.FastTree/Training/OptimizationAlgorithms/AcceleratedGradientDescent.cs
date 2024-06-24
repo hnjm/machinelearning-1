@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 using Microsoft.ML.Runtime;
@@ -36,11 +36,11 @@ namespace Microsoft.ML.Trainers.FastTree
             trainingScores.XK = xk;
 
             if (tree == null)
-                return null; // No tree was actually learnt. Give up.
+                return null; // No tree was actually learned. Give up.
 
             // ... and update the training scores that we omitted from update
             // in AcceleratedGradientDescent.UpdateScores
-            // Here we could use faster way of comuting train scores taking advantage of scores precompited by LineSearch
+            // Here we could use faster way of computing train scores taking advantage of scores precomputed by LineSearch
             // But that would make the code here even more difficult/complex
             trainingScores.AddScores(tree, TreeLearner.Partitioning, 1.0);
 
@@ -54,12 +54,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
         internal override void UpdateScores(ScoreTracker t, InternalRegressionTree tree)
         {
-            if (t == TrainingScores)
-            {
-                return;
-                //Special optimized routine for updating TrainingScores is implemented as part of TrainingItearation
-            }
-            else
+            if (t != TrainingScores)
                 base.UpdateScores(t, tree);
         }
 

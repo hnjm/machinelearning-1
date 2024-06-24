@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -71,7 +71,7 @@ namespace Microsoft.ML.Tools
                 {
                     progressCancel.Cancel();
                     progressTrackerTask.Wait();
-                    // If the run completed so quickly that the progress task was cancelled before it even got a chance to start,
+                    // If the run completed so quickly that the progress task was canceled before it even got a chance to start,
                     // we need to gather the checkpoints.
                     env.PrintProgress();
                 }
@@ -82,18 +82,8 @@ namespace Microsoft.ML.Tools
 
         private static ConsoleEnvironment CreateEnvironment()
         {
-            string sensitivityString = null;
             MessageSensitivity sensitivity = MessageSensitivity.All;
-            if (!string.IsNullOrWhiteSpace(sensitivityString))
-            {
-                // Cannot use host or channels since the environment isn't even
-                // created yet.
-                if (!Enum.TryParse(sensitivityString, out sensitivity))
-                {
-                    Console.Error.WriteLine("Cannot parse '{0}' as {1}", sensitivityString, nameof(MessageSensitivity));
-                    sensitivity = MessageSensitivity.All;
-                }
-            }
+
             return new ConsoleEnvironment(sensitivity: sensitivity);
         }
 

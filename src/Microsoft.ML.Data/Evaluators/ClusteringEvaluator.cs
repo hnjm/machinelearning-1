@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -374,7 +374,7 @@ namespace Microsoft.ML.Data
                 }
             }
 
-            // The getters are initialized in InitializeNextPass(), when the new IRowCursor is available.
+            // The getters are initialized in InitializeNextPass(), when the new DataViewRowCursor is available.
             private ValueGetter<Single> _labelGetter;
             private ValueGetter<VBuffer<Single>> _scoreGetter;
             private ValueGetter<Single> _weightGetter;
@@ -752,7 +752,7 @@ namespace Microsoft.ML.Data
         {
             Host.AssertNonEmpty(ScoreCol);
 
-            var type = schema[(int) ScoreIndex].Type;
+            var type = schema[(int)ScoreIndex].Type;
             if (!(type is VectorDataViewType vectorType) || !vectorType.IsKnownSize || vectorType.ItemType != NumberDataViewType.Single)
                 throw Host.ExceptSchemaMismatch(nameof(schema), "score", ScoreCol, "known-size vector of Single", type.ToString());
         }

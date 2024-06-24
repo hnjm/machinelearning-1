@@ -21,6 +21,7 @@ namespace Microsoft.ML.Transforms.Text
     /// | Does this estimator need to look at the data to train its parameters? | Yes |
     /// | Input column data type | Vector of [Text](xref:Microsoft.ML.Data.TextDataViewType) |
     /// | Output column data type | Vector of known-size of <xref:System.Single> |
+    /// | Exportable to ONNX | Yes |
     ///
     /// The resulting <xref:Microsoft.ML.ITransformer> creates a new column, named as specified in the output column name parameters, and
     /// produces a vector of n-gram counts (sequences of n consecutive words) from a given data.
@@ -44,6 +45,8 @@ namespace Microsoft.ML.Transforms.Text
         private readonly bool _useAllLengths;
         private readonly int _maxNumTerms;
         private readonly NgramExtractingEstimator.WeightingCriteria _weighting;
+        private readonly char _termSeparator;
+        private readonly char _freqSeparator;
 
         /// <summary>
         /// Options for how the n-grams are extracted.
@@ -78,7 +81,7 @@ namespace Microsoft.ML.Transforms.Text
 
             public Options()
             {
-                NgramLength = 1;
+                NgramLength = 2;
                 SkipLength = NgramExtractingEstimator.Defaults.SkipLength;
                 UseAllLengths = NgramExtractingEstimator.Defaults.UseAllLengths;
                 MaximumNgramsCount = new int[] { NgramExtractingEstimator.Defaults.MaximumNgramsCount };
@@ -98,6 +101,8 @@ namespace Microsoft.ML.Transforms.Text
         /// <param name="useAllLengths">Whether to include all n-gram lengths up to <paramref name="ngramLength"/> or only <paramref name="ngramLength"/>.</param>
         /// <param name="maximumNgramsCount">Maximum number of n-grams to store in the dictionary.</param>
         /// <param name="weighting">Statistical measure used to evaluate how important a word is to a document in a corpus.</param>
+        /// <param name="termSeparator">Separator used to separate terms/frequency pairs.</param>
+        /// <param name="freqSeparator">Separator used to separate terms from their frequency.</param>
         internal WordBagEstimator(IHostEnvironment env,
             string outputColumnName,
             string inputColumnName = null,
@@ -105,8 +110,10 @@ namespace Microsoft.ML.Transforms.Text
             int skipLength = 0,
             bool useAllLengths = true,
             int maximumNgramsCount = 10000000,
-            NgramExtractingEstimator.WeightingCriteria weighting = NgramExtractingEstimator.WeightingCriteria.Tf)
-            : this(env, outputColumnName, new[] { inputColumnName ?? outputColumnName }, ngramLength, skipLength, useAllLengths, maximumNgramsCount, weighting)
+            NgramExtractingEstimator.WeightingCriteria weighting = NgramExtractingEstimator.WeightingCriteria.Tf,
+            char termSeparator = default,
+            char freqSeparator = default)
+            : this(env, outputColumnName, new[] { inputColumnName ?? outputColumnName }, ngramLength, skipLength, useAllLengths, maximumNgramsCount, weighting, termSeparator, freqSeparator)
         {
         }
 
@@ -122,6 +129,8 @@ namespace Microsoft.ML.Transforms.Text
         /// <param name="useAllLengths">Whether to include all n-gram lengths up to <paramref name="ngramLength"/> or only <paramref name="ngramLength"/>.</param>
         /// <param name="maximumNgramsCount">Maximum number of n-grams to store in the dictionary.</param>
         /// <param name="weighting">Statistical measure used to evaluate how important a word is to a document in a corpus.</param>
+        /// <param name="termSeparator">Separator used to separate terms/frequency pairs.</param>
+        /// <param name="freqSeparator">Separator used to separate terms from their frequency.</param>
         internal WordBagEstimator(IHostEnvironment env,
             string outputColumnName,
             string[] inputColumnNames,
@@ -129,8 +138,10 @@ namespace Microsoft.ML.Transforms.Text
             int skipLength = 0,
             bool useAllLengths = true,
             int maximumNgramsCount = 10000000,
-            NgramExtractingEstimator.WeightingCriteria weighting = NgramExtractingEstimator.WeightingCriteria.Tf)
-            : this(env, new[] { (outputColumnName, inputColumnNames) }, ngramLength, skipLength, useAllLengths, maximumNgramsCount, weighting)
+            NgramExtractingEstimator.WeightingCriteria weighting = NgramExtractingEstimator.WeightingCriteria.Tf,
+            char termSeparator = default,
+            char freqSeparator = default)
+            : this(env, new[] { (outputColumnName, inputColumnNames) }, ngramLength, skipLength, useAllLengths, maximumNgramsCount, weighting, termSeparator, freqSeparator)
         {
         }
 
@@ -145,13 +156,17 @@ namespace Microsoft.ML.Transforms.Text
         /// <param name="useAllLengths">Whether to include all n-gram lengths up to <paramref name="ngramLength"/> or only <paramref name="ngramLength"/>.</param>
         /// <param name="maximumNgramsCount">Maximum number of n-grams to store in the dictionary.</param>
         /// <param name="weighting">Statistical measure used to evaluate how important a word is to a document in a corpus.</param>
+        /// <param name="termSeparator">Separator used to separate terms/frequency pairs.</param>
+        /// <param name="freqSeparator">Separator used to separate terms from their frequency.</param>
         internal WordBagEstimator(IHostEnvironment env,
             (string outputColumnName, string[] inputColumnNames)[] columns,
             int ngramLength = 1,
             int skipLength = 0,
             bool useAllLengths = true,
             int maximumNgramsCount = 10000000,
-            NgramExtractingEstimator.WeightingCriteria weighting = NgramExtractingEstimator.WeightingCriteria.Tf)
+            NgramExtractingEstimator.WeightingCriteria weighting = NgramExtractingEstimator.WeightingCriteria.Tf,
+            char termSeparator = default,
+            char freqSeparator = default)
         {
             Contracts.CheckValue(env, nameof(env));
             _host = env.Register(nameof(WordBagEstimator));
@@ -168,23 +183,30 @@ namespace Microsoft.ML.Transforms.Text
             _useAllLengths = useAllLengths;
             _maxNumTerms = maximumNgramsCount;
             _weighting = weighting;
+            _termSeparator = termSeparator;
+            _freqSeparator = freqSeparator;
         }
 
         /// <summary> Trains and returns a <see cref="ITransformer"/>.</summary>
         public ITransformer Fit(IDataView input)
         {
-            // Create arguments.
-            var options = new WordBagBuildingTransformer.Options
+            var estimator = WordBagBuildingTransformer.CreateEstimator(_host, CreateOptions(), SchemaShape.Create(input.Schema));
+            return estimator.Fit(input);
+        }
+
+        private WordBagBuildingTransformer.Options CreateOptions()
+        {
+            return new WordBagBuildingTransformer.Options
             {
                 Columns = _columns.Select(x => new WordBagBuildingTransformer.Column { Name = x.outputColumnName, Source = x.sourceColumnsNames }).ToArray(),
                 NgramLength = _ngramLength,
                 SkipLength = _skipLength,
                 UseAllLengths = _useAllLengths,
                 MaxNumTerms = new[] { _maxNumTerms },
-                Weighting = _weighting
+                Weighting = _weighting,
+                TermSeparator = _termSeparator,
+                FreqSeparator = _freqSeparator,
             };
-
-            return WordBagBuildingTransformer.CreateTransfomer(_host, options, input);
         }
 
         /// <summary>
@@ -195,9 +217,8 @@ namespace Microsoft.ML.Transforms.Text
         {
             _host.CheckValue(inputSchema, nameof(inputSchema));
 
-            var fakeSchema = FakeSchemaFactory.Create(inputSchema);
-            var transformer = Fit(new EmptyDataView(_host, fakeSchema));
-            return SchemaShape.Create(transformer.GetOutputSchema(fakeSchema));
+            var estimator = WordBagBuildingTransformer.CreateEstimator(_host, CreateOptions(), inputSchema);
+            return estimator.GetOutputSchema(inputSchema);
         }
     }
 
@@ -212,6 +233,7 @@ namespace Microsoft.ML.Transforms.Text
     /// | Does this estimator need to look at the data to train its parameters? | Yes |
     /// | Input column data type | Vector of [Text](xref:Microsoft.ML.Data.TextDataViewType) |
     /// | Output column data type | Vector of known-size of <xref:System.Single> |
+    /// | Exportable to ONNX | No |
     ///
     /// The resulting <xref:Microsoft.ML.ITransformer> creates a new column, named as specified in the output column name parameters, and
     /// produces a vector of n-gram counts (sequences of n consecutive words) from a given data.

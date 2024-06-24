@@ -11,7 +11,7 @@ namespace Samples.Dynamic
         /// This example demonstrates the use of MapKeyToVector by mapping keys to
         /// floats[]. Because the ML.NET KeyType maps the missing value to zero,
         /// counting starts at 1, so the uint values converted to KeyTypes will
-        /// appear skewed by one. See https://github.com/dotnet/machinelearning/blob/master/docs/code/IDataViewTypeSystem.md#key-types
+        /// appear skewed by one. See https://github.com/dotnet/machinelearning/blob/main/docs/code/IDataViewTypeSystem.md#key-types
         public static void Example()
         {
             // Create a new ML context, for ML.NET operations. It can be used for
@@ -33,7 +33,7 @@ namespace Samples.Dynamic
             // set 1 to corresponding key's value index in that array. After that we
             // concatenate two columns with single int values into vector of ints.
             // Third transform will create vector of keys, where key type is shared
-            // across whole vector. Forth transfrom output data as count vector and
+            // across whole vector. Forth transform output data as count vector and
             // that vector would have size equal to shared key type cardinality and
             // put key counts to corresponding indexes in array. Fifth transform
             // output indicator vector for each key and concatenate them together.
@@ -44,13 +44,13 @@ namespace Samples.Dynamic
                 .Append(mlContext.Transforms.Concatenate("Parts", "PartA", "PartB"))
                 .Append(mlContext.Transforms.Conversion.MapValueToKey("Parts"))
                 .Append(mlContext.Transforms.Conversion.MapKeyToVector(
-                    "PartsCount", "Parts", outputCountVector:true))
+                    "PartsCount", "Parts", outputCountVector: true))
                 .Append(mlContext.Transforms.Conversion.MapKeyToVector(
                     "PartsNoCount", "Parts"));
 
             // Fits the pipeline to the data.
             IDataView transformedData = pipeline.Fit(data).Transform(data);
-            
+
             // Getting the resulting data as an IEnumerable.
             // This will contain the newly created columns.
             IEnumerable<TransformedData> features = mlContext.Data.CreateEnumerable<
@@ -61,8 +61,8 @@ namespace Samples.Dynamic
 
             foreach (var featureRow in features)
                 Console.WriteLine(featureRow.Timeframe + "          " +
-                    string.Join(',', featureRow.TimeframeVector.Select(x=>x)) + "  "
-                    + string.Join(',', featureRow.PartsCount.Select(x => x)) + 
+                    string.Join(',', featureRow.TimeframeVector.Select(x => x)) + "  "
+                    + string.Join(',', featureRow.PartsCount.Select(x => x)) +
                     "       " + string.Join(',', featureRow.PartsNoCount.Select(
                     x => x)));
 

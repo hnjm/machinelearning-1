@@ -1,21 +1,27 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
+using Microsoft.ML.TestFramework;
 using Microsoft.ML.Trainers;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.ML.RunTests
 {
     /// <summary>
     /// These are tests of the loss functions in the Learners assembly.
     /// </summary>
-    public class TestLoss
+    public class TestLoss : BaseTestClass
     {
         private const string _category = "Loss";
 
         private const float _epsilon = 1e-4f;
+
+        public TestLoss(ITestOutputHelper output) : base(output)
+        {
+        }
 
         /// <summary>
         /// A small helper for comparing a loss's computations to expected values.
@@ -33,8 +39,8 @@ namespace Microsoft.ML.RunTests
         {
             Double loss = lossFunc.Loss((float)output, (float)label);
             float derivative = lossFunc.Derivative((float)output, (float)label);
-            Assert.Equal(expectedLoss, loss, 5);
-            Assert.Equal(expectedUpdate, -derivative, 5);
+            Assert.Equal(expectedLoss, loss, 0.00001);
+            Assert.Equal(expectedUpdate, -derivative, 0.00001);
 
             if (differentiable)
             {
@@ -42,7 +48,7 @@ namespace Microsoft.ML.RunTests
                 // Use a simple finite difference method to see if it's in the right ballpark.
                 float almostOutput = Math.Max((float)output * (1 + _epsilon), (float)output + _epsilon);
                 Double almostLoss = lossFunc.Loss(almostOutput, (float)label);
-                Assert.Equal((almostLoss - loss) / (almostOutput - output), derivative, 1);
+                Assert.Equal((almostLoss - loss) / (almostOutput - output), derivative, 0.1);
             }
         }
 

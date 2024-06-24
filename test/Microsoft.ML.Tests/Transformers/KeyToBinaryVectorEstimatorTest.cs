@@ -8,6 +8,7 @@ using System.Linq;
 using Microsoft.ML.Data;
 using Microsoft.ML.Model;
 using Microsoft.ML.RunTests;
+using Microsoft.ML.TestFrameworkCommon;
 using Microsoft.ML.Tools;
 using Microsoft.ML.Transforms;
 using Xunit;
@@ -58,7 +59,7 @@ namespace Microsoft.ML.Tests.Transformers
         [Fact]
         public void KeyToBinaryVector()
         {
-            string dataPath = GetDataPath("breast-cancer.txt");
+            string dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var data = ML.Data.LoadFromTextFile(dataPath, new[] {
                 new TextLoader.Column("ScalarString", DataKind.String, 0),
                 new TextLoader.Column("VectorString", DataKind.String, 1, 4),
@@ -129,7 +130,7 @@ namespace Microsoft.ML.Tests.Transformers
             Assert.Empty(column.Annotations.Schema);
 
             column = result.Schema["CatD"];
-            Assert.Equal(column.Annotations.Schema.Single().Name, AnnotationUtils.Kinds.IsNormalized);
+            Assert.Equal(AnnotationUtils.Kinds.IsNormalized, column.Annotations.Schema.Single().Name);
             Assert.True(column.IsNormalized());
         }
 

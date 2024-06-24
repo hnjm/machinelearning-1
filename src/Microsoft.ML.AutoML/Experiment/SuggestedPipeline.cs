@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -11,7 +11,7 @@ namespace Microsoft.ML.AutoML
 {
     /// <summary>
     /// A runnable pipeline. Contains a learner and set of transforms,
-    /// along with a RunSummary if it has already been exectued.
+    /// along with a RunSummary if it has already been executed.
     /// </summary>
     internal class SuggestedPipeline
     {
@@ -50,6 +50,11 @@ namespace Microsoft.ML.AutoML
         public override int GetHashCode()
         {
             return ToString().GetHashCode();
+        }
+
+        public MLContext GetContext()
+        {
+            return _context;
         }
 
         public Pipeline ToPipeline()

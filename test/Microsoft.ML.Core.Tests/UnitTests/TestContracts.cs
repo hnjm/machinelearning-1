@@ -1,14 +1,21 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
 using Microsoft.ML.Runtime;
+using Microsoft.ML.TestFramework;
 using Xunit;
+using Xunit.Abstractions;
+
 namespace Microsoft.ML.RunTests
 {
-    public sealed class TestContracts
+    public sealed class TestContracts : BaseTestClass
     {
+        public TestContracts(ITestOutputHelper output) : base(output)
+        {
+        }
+
         private void Helper(IExceptionContext ectx, MessageSensitivity expected)
         {
             Contracts.AssertValueOrNull(ectx);
@@ -41,7 +48,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void ExceptionSensitivity()
         {
-            var env = new MLContext();
+            var env = new MLContext(1);
             // Default sensitivity should be unknown, that is, all bits set.
             Helper(null, MessageSensitivity.Unknown);
             // If we set it to be not sensitive, then the messages should be marked insensitive,

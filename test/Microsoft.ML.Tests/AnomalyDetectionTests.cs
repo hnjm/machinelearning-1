@@ -33,8 +33,8 @@ namespace Microsoft.ML.Tests
             // Evaluate
             var metrics = ML.AnomalyDetection.Evaluate(transformedData, falsePositiveCount: 5);
 
-            Assert.Equal(0.98667, metrics.AreaUnderRocCurve, 5);
-            Assert.Equal(0.90000, metrics.DetectionRateAtFalsePositiveCount, 5);
+            Assert.Equal(0.98667, metrics.AreaUnderRocCurve, 0.00001);
+            Assert.Equal(0.90000, metrics.DetectionRateAtFalsePositiveCount, 0.00001);
         }
 
         /// <summary>
@@ -147,7 +147,7 @@ namespace Microsoft.ML.Tests
                 new DataPoint(){ Features = new float[3] {1, 0, 0} }
             };
 
-            // Convert the List<DataPoint> to IDataView, a consumble format to ML.NET functions.
+            // Convert the List<DataPoint> to IDataView, a consumable format to ML.NET functions.
             var data = mlContext.Data.LoadFromEnumerable(samples);
 
             // Train the anomaly detector.
@@ -250,6 +250,45 @@ namespace Microsoft.ML.Tests
 
             var model = trainer.Fit(trainData);
             return model.Transform(testData);
+        }
+
+        /// <summary>
+        /// Check that when PCA created invalid eigenvectors with NaNs a readable exception message is thrown.
+        /// </summary>
+        [Fact]
+
+        public void PcaTrainerInvalidEigenvectorsException()
+        {
+            var mlContext = new MLContext(seed: 0);
+
+            var trainer = mlContext.AnomalyDetection.Trainers.RandomizedPca(
+                featureColumnName: nameof(DataPoint.Features), rank: 3);
+
+            var samples = new List<DataPoint>()
+            {
+                new DataPoint(){ Features = new float[3] {1, 0, 2} },
+                new DataPoint(){ Features = new float[3] {2, 0, 4} },
+                new DataPoint(){ Features = new float[3] {4, 0, 8} },
+                new DataPoint(){ Features = new float[3] {8, 0, 16} }
+            };
+
+            var data = mlContext.Data.LoadFromEnumerable(samples);
+
+            bool exceptionThrown = false;
+            try
+            {
+                // Since we provided a dataset where all rows are linearly dependent,
+                // the PCA algorithm will likely fail when extracting 3 eigenvectors
+                // and produce eigenvectors with NaN.
+                var model = trainer.Fit(data);
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                exceptionThrown = true;
+                Assert.Contains("The learnt eigenvectors contained NaN values", ex.Message);
+            }
+
+            Assert.True(exceptionThrown);
         }
     }
 }

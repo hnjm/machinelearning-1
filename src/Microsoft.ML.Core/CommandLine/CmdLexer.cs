@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -10,7 +10,7 @@ namespace Microsoft.ML.CommandLine
     [BestFriend]
     internal sealed class CmdLexer
     {
-        private CharCursor _curs;
+        private readonly CharCursor _curs;
 
         // Whether \ has a special significance.
         private readonly bool _escapes;
@@ -220,7 +220,7 @@ namespace Microsoft.ML.CommandLine
             while (_curs.ChNext() == '\\')
                 cv++;
 
-            // This assumes that slash is escaped iff it preceeds a special character
+            // This assumes that slash is escaped iff it precedes a special character
             switch (_curs.ChCur)
             {
                 case '"':
@@ -307,7 +307,7 @@ namespace Microsoft.ML.CommandLine
     internal sealed class CmdQuoter
     {
         private readonly string _str;
-        private StringBuilder _sb;
+        private readonly StringBuilder _sb;
         private int _ich;
 
         private CmdQuoter(string str, StringBuilder sb)

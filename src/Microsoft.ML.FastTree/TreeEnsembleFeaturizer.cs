@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -84,14 +84,14 @@ namespace Microsoft.ML.Data
             /// and the i-th vector element is the prediction value predicted by the i-th tree.
             /// If <see cref="_treesColumnName"/> is <see langword="null"/>, this output column may not be generated.
             /// </summary>
-            private string _treesColumnName;
+            private readonly string _treesColumnName;
 
             /// <summary>
             /// The 0-1 encoding of all leaf nodes' IDs. Its type is a vector of <see cref="System.Single"/>. If the given feature
             /// vector falls into the first leaf of the first tree, the first element in the 0-1 encoding would be 1.
             /// If <see cref="_leavesColumnName"/> is <see langword="null"/>, this output column may not be generated.
             /// </summary>
-            private string _leavesColumnName;
+            private readonly string _leavesColumnName;
 
             /// <summary>
             /// The 0-1 encoding of the paths to the leaves. If the path to the first tree's leaf is node 1 (2nd node in the first tree),
@@ -99,7 +99,7 @@ namespace Microsoft.ML.Data
             /// would be 1.
             /// If <see cref="_pathsColumnName"/> is <see langword="null"/>, this output column may not be generated.
             /// </summary>
-            private string _pathsColumnName;
+            private readonly string _pathsColumnName;
 
             public BoundMapper(IExceptionContext ectx, TreeEnsembleFeaturizerBindableMapper owner, RoleMappedSchema schema,
                 string treesColumnName, string leavesColumnName, string pathsColumnName)
@@ -157,7 +157,7 @@ namespace Microsoft.ML.Data
                 }
 
                 _pathsColumnName = pathsColumnName;
-                if (pathsColumnName !=  null)
+                if (pathsColumnName != null)
                 {
                     // Metadata of path IDs.
                     var pathIdMetadataBuilder = new DataViewSchema.Annotations.Builder();
@@ -192,14 +192,14 @@ namespace Microsoft.ML.Data
                 if (_treesColumnName != null)
                 {
                     ValueGetter<VBuffer<float>> fn = state.GetTreeValues;
-                    if(activeIndices.Contains(OutputSchema[_treesColumnName].Index))
+                    if (activeIndices.Contains(OutputSchema[_treesColumnName].Index))
                         delegates.Add(fn);
                     else
                         delegates.Add(null);
                 }
 
                 // Get the leaf indicator getter.
-                if (_leavesColumnName != null )
+                if (_leavesColumnName != null)
                 {
                     ValueGetter<VBuffer<float>> fn = state.GetLeafIds;
                     if (activeIndices.Contains(OutputSchema[_leavesColumnName].Index))
@@ -230,7 +230,7 @@ namespace Microsoft.ML.Data
                 private readonly int _numLeaves;
 
                 private VBuffer<float> _src;
-                private ValueGetter<VBuffer<float>> _featureGetter;
+                private readonly ValueGetter<VBuffer<float>> _featureGetter;
                 private long _cachedPosition;
                 private readonly int[] _leafIds;
                 private readonly List<int>[] _pathIds;
@@ -623,8 +623,13 @@ namespace Microsoft.ML.Data
             IDataTransform xf;
             using (var ch = host.Start("Create Tree Ensemble Scorer"))
             {
-                var scorerArgs = new TreeEnsembleFeaturizerBindableMapper.Arguments() {
-                    Suffix = args.Suffix, TreesColumnName = "Trees", LeavesColumnName = "Leaves", PathsColumnName = "Paths" };
+                var scorerArgs = new TreeEnsembleFeaturizerBindableMapper.Arguments()
+                {
+                    Suffix = args.Suffix,
+                    TreesColumnName = "Trees",
+                    LeavesColumnName = "Leaves",
+                    PathsColumnName = "Paths"
+                };
                 if (!string.IsNullOrWhiteSpace(args.TrainedModelFile))
                 {
                     if (args.Trainer != null)
@@ -632,7 +637,7 @@ namespace Microsoft.ML.Data
 
                     ch.Trace("Loading model");
                     IPredictor predictor;
-                    using (Stream strm = new FileStream(args.TrainedModelFile, FileMode.Open, FileAccess.Read))
+                    using (Stream strm = new FileStream(args.TrainedModelFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     using (var rep = RepositoryReader.Open(strm, ch))
                         ModelLoadContext.LoadModel<IPredictor, SignatureLoadModel>(host, out predictor, rep, ModelFileUtils.DirPredictor);
 
@@ -696,8 +701,13 @@ namespace Microsoft.ML.Data
 
             using (var ch = host.Start("Create Tree Ensemble Scorer"))
             {
-                var scorerArgs = new TreeEnsembleFeaturizerBindableMapper.Arguments() {
-                    Suffix = args.Suffix, TreesColumnName = "Trees", LeavesColumnName = "Leaves", PathsColumnName = "Paths" };
+                var scorerArgs = new TreeEnsembleFeaturizerBindableMapper.Arguments()
+                {
+                    Suffix = args.Suffix,
+                    TreesColumnName = "Trees",
+                    LeavesColumnName = "Leaves",
+                    PathsColumnName = "Paths"
+                };
                 var predictor = args.PredictorModel.Predictor;
                 ch.Trace("Prepare data");
                 RoleMappedData data = null;
@@ -707,8 +717,8 @@ namespace Microsoft.ML.Data
                 ch.Assert(predictor == predictor2);
 
                 // Make sure that the given predictor has the correct number of input features.
-                if (predictor is CalibratedModelParametersBase<IPredictorProducing<float>, Calibrators.ICalibrator>)
-                    predictor = ((CalibratedModelParametersBase<IPredictorProducing<float>, Calibrators.ICalibrator>)predictor).SubModel;
+                if (predictor is CalibratedModelParametersBase<IPredictorProducing<float>, Calibrators.ICalibrator> calibratedModelParametersBase)
+                    predictor = calibratedModelParametersBase.SubModel;
                 // Predictor should be a TreeEnsembleModelParameters, which implements IValueMapper, so this should
                 // be non-null.
                 var vm = predictor as IValueMapper;
@@ -733,9 +743,8 @@ namespace Microsoft.ML.Data
             // key-types we just upfront convert it to the most general type (ulong) and work from there.
             KeyDataViewType dstType = new KeyDataViewType(typeof(ulong), type.Count);
             bool identity;
-            var converter = Conversions.Instance.GetStandardConversion<TInput, ulong>(type, dstType, out identity);
-            var isNa = Conversions.Instance.GetIsNAPredicate<TInput>(type);
-            ulong temp = 0;
+            var converter = Conversions.DefaultInstance.GetStandardConversion<TInput, ulong>(type, dstType, out identity);
+            var isNa = Conversions.DefaultInstance.GetIsNAPredicate<TInput>(type);
 
             ValueMapper<TInput, Single> mapper;
             if (seed == 0)
@@ -743,6 +752,10 @@ namespace Microsoft.ML.Data
                 mapper =
                     (in TInput src, ref Single dst) =>
                     {
+                        //Attention: This method is called from multiple threads.
+                        //Do not move the temp variable outside this method.
+                        //If you do, the variable is shared between the threads and results in a race condition.
+                        ulong temp = 0;
                         if (isNa(in src))
                         {
                             dst = Single.NaN;
@@ -759,6 +772,10 @@ namespace Microsoft.ML.Data
                 mapper =
                     (in TInput src, ref Single dst) =>
                     {
+                        //Attention: This method is called from multiple threads.
+                        //Do not move the temp variable outside this method.
+                        //If you do, the variable is shared between the threads and results in a race condition.
+                        ulong temp = 0;
                         if (isNa(in src))
                         {
                             dst = Single.NaN;

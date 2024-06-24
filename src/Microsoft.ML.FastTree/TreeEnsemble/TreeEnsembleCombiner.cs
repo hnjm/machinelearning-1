@@ -23,14 +23,14 @@ namespace Microsoft.ML.Trainers.FastTree
             _host = env.Register("TreeEnsembleCombiner");
             switch (kind)
             {
-            case PredictionKind.BinaryClassification:
-            case PredictionKind.Regression:
-            case PredictionKind.Ranking:
-                _kind = kind;
-                break;
-            default:
-                throw _host.ExceptUserArg(nameof(kind), $"Tree ensembles can be either of type {nameof(PredictionKind.BinaryClassification)}, " +
-                    $"{nameof(PredictionKind.Regression)} or {nameof(PredictionKind.Ranking)}");
+                case PredictionKind.BinaryClassification:
+                case PredictionKind.Regression:
+                case PredictionKind.Ranking:
+                    _kind = kind;
+                    break;
+                default:
+                    throw _host.ExceptUserArg(nameof(kind), $"Tree ensembles can be either of type {nameof(PredictionKind.BinaryClassification)}, " +
+                        $"{nameof(PredictionKind.Regression)} or {nameof(PredictionKind.Ranking)}");
             }
         }
 
@@ -65,9 +65,9 @@ namespace Microsoft.ML.Trainers.FastTree
                 foreach (var t in tree.TrainedEnsemble.Trees)
                 {
                     var bytes = new byte[t.SizeInBytes()];
-                    int position = -1;
+                    int position = 0;
                     t.ToByteArray(bytes, ref position);
-                    position = -1;
+                    position = 0;
                     var tNew = new InternalRegressionTree(bytes, ref position);
                     if (paramA != 1)
                     {
@@ -99,20 +99,20 @@ namespace Microsoft.ML.Trainers.FastTree
 
             switch (_kind)
             {
-            case PredictionKind.BinaryClassification:
-                if (!binaryClassifier)
-                    return new FastTreeBinaryModelParameters(_host, ensemble, featureCount, null);
+                case PredictionKind.BinaryClassification:
+                    if (!binaryClassifier)
+                        return new FastTreeBinaryModelParameters(_host, ensemble, featureCount, null);
 
-                var cali = new PlattCalibrator(_host, -1, 0);
-                var fastTreeModel = new FastTreeBinaryModelParameters(_host, ensemble, featureCount, null);
-                return new FeatureWeightsCalibratedModelParameters<FastTreeBinaryModelParameters, PlattCalibrator>(_host, fastTreeModel, cali);
-            case PredictionKind.Regression:
-                return new FastTreeRegressionModelParameters(_host, ensemble, featureCount, null);
-            case PredictionKind.Ranking:
-                return new FastTreeRankingModelParameters(_host, ensemble, featureCount, null);
-            default:
-                _host.Assert(false);
-                throw _host.ExceptNotSupp();
+                    var cali = new PlattCalibrator(_host, -1, 0);
+                    var fastTreeModel = new FastTreeBinaryModelParameters(_host, ensemble, featureCount, null);
+                    return new FeatureWeightsCalibratedModelParameters<FastTreeBinaryModelParameters, PlattCalibrator>(_host, fastTreeModel, cali);
+                case PredictionKind.Regression:
+                    return new FastTreeRegressionModelParameters(_host, ensemble, featureCount, null);
+                case PredictionKind.Ranking:
+                    return new FastTreeRankingModelParameters(_host, ensemble, featureCount, null);
+                default:
+                    _host.Assert(false);
+                    throw _host.ExceptNotSupp();
             }
         }
     }

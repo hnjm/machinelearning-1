@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -13,6 +13,7 @@ using Microsoft.ML.Internal.Utilities;
 using Microsoft.ML.Model;
 using Microsoft.ML.Numeric;
 using Microsoft.ML.Runtime;
+using Microsoft.ML.SearchSpace;
 using Microsoft.ML.Trainers;
 
 [assembly: LoadableClass(LinearSvmTrainer.Summary, typeof(LinearSvmTrainer), typeof(LinearSvmTrainer.Options),
@@ -43,6 +44,7 @@ namespace Microsoft.ML.Trainers
     /// | Is normalization required? | Yes |
     /// | Is caching required? | No |
     /// | Required NuGet in addition to Microsoft.ML | None |
+    /// | Exportable to ONNX | Yes |
     ///
     /// ### Training Algorithm Details
     /// Linear [SVM](https://en.wikipedia.org/wiki/Support-vector_machine#Linear_SVM) implements
@@ -51,7 +53,7 @@ namespace Microsoft.ML.Trainers
     /// That is the same as the sign of the feautures' weighted sum, i.e. $\sum_{i = 0}^{D-1} \left(w_i * f_i \right) + b$, where $w_0, w_1,..., w_{D-1}$
     /// are the weights computed by the algorithm, and $b$ is the bias computed by the algorithm.
     ///
-    /// This algorithm implemented is the PEGASOS method, which alternates between stochastic gradient descent steps and projection steps,
+    /// Linear SVM implements the PEGASOS method, which alternates between stochastic gradient descent steps and projection steps,
     /// introduced in [this paper](http://ttic.uchicago.edu/~shai/papers/ShalevSiSr07.pdf) by Shalev-Shwartz, Singer and Srebro.
     ///
     /// Check the See Also section for links to usage examples.
@@ -81,18 +83,22 @@ namespace Microsoft.ML.Trainers
             [Argument(ArgumentType.AtMostOnce, HelpText = "Regularizer constant", ShortName = "lambda", SortOrder = 50)]
             [TGUI(SuggestedSweeps = "0.00001-0.1;log;inc:10")]
             [TlcModule.SweepableFloatParamAttribute("Lambda", 0.00001f, 0.1f, 10, isLogScale: true)]
+            [Range(1e-6f, 1f, 1e-4f, true)]
             public float Lambda = 0.001f;
 
             [Argument(ArgumentType.AtMostOnce, HelpText = "Batch size", ShortName = "batch", SortOrder = 190)]
             [TGUI(Label = "Batch Size")]
+            [Range(1, 128, 1, true)]
             public int BatchSize = 1;
 
             [Argument(ArgumentType.AtMostOnce, HelpText = "Perform projection to unit-ball? Typically used with batch size > 1.", ShortName = "project", SortOrder = 50)]
             [TlcModule.SweepableDiscreteParam("PerformProjection", null, isBool: true)]
+            [BooleanChoice(defaultValue: false)]
             public bool PerformProjection = false;
 
             [Argument(ArgumentType.AtMostOnce, HelpText = "No bias")]
             [TlcModule.SweepableDiscreteParam("NoBias", null, isBool: true)]
+            [BooleanChoice(defaultValue: false)]
             public bool NoBias = false;
 
             [Argument(ArgumentType.AtMostOnce, HelpText = "The calibrator kind to apply to the predictor. Specify null for no calibration", Visibility = ArgumentAttribute.VisibilityType.EntryPointsOnly)]

@@ -85,8 +85,12 @@ namespace Microsoft.ML.Trainers.FastTree
             _pathsColumnName = pathsColumnName;
 
             // Create an argument, _scorerArgs, to pass the output column names to the underlying scorer.
-            _scorerArgs = new TreeEnsembleFeaturizerBindableMapper.Arguments {
-                TreesColumnName = _treesColumnName, LeavesColumnName = _leavesColumnName, PathsColumnName = _pathsColumnName };
+            _scorerArgs = new TreeEnsembleFeaturizerBindableMapper.Arguments
+            {
+                TreesColumnName = _treesColumnName,
+                LeavesColumnName = _leavesColumnName,
+                PathsColumnName = _pathsColumnName
+            };
 
             // Create a bindable mapper. It provides the core computation and can be attached to any IDataView and produce
             // a transformed IDataView.
@@ -115,8 +119,12 @@ namespace Microsoft.ML.Trainers.FastTree
             _pathsColumnName = ctx.LoadStringOrNull();
 
             // Create an argument to specify output columns' names of this transformer.
-            _scorerArgs = new TreeEnsembleFeaturizerBindableMapper.Arguments {
-                TreesColumnName = _treesColumnName, LeavesColumnName = _leavesColumnName, PathsColumnName = _pathsColumnName };
+            _scorerArgs = new TreeEnsembleFeaturizerBindableMapper.Arguments
+            {
+                TreesColumnName = _treesColumnName,
+                LeavesColumnName = _leavesColumnName,
+                PathsColumnName = _pathsColumnName
+            };
 
             // Create a bindable mapper. It provides the core computation and can be attached to any IDataView and produce
             // a transformed IDataView.
@@ -178,7 +186,7 @@ namespace Microsoft.ML.Trainers.FastTree
                 loaderAssemblyName: typeof(TreeEnsembleFeaturizationTransformer).Assembly.FullName);
         }
 
-        private static TreeEnsembleFeaturizationTransformer Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static TreeEnsembleFeaturizationTransformer Create(IHostEnvironment env, ModelLoadContext ctx)
             => new TreeEnsembleFeaturizationTransformer(env, ctx);
     }
 }

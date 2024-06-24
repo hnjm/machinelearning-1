@@ -169,18 +169,18 @@ namespace Microsoft.ML.Transforms.TimeSeries
                 {
                 }
 
-                private protected override sealed void SpectralResidual(Single input, FixedSizeQueue<Single> data, ref VBufferEditor<double> result)
+                private protected sealed override void SpectralResidual(Single input, FixedSizeQueue<Single> data, ref VBufferEditor<double> result)
                 {
                     // Step 1: Get backadd wave
                     List<Single> backAddList = BackAdd(data);
 
-                    // Step 2: FFT transformation
+                    // Step 2: FftTransform transformation
                     int length = backAddList.Count;
                     float[] fftRe = new float[length];
                     float[] fftIm = new float[length];
                     FftUtils.ComputeForwardFft(backAddList.ToArray(), Enumerable.Repeat(0.0f, length).ToArray(), fftRe, fftIm, length);
 
-                    // Step 3: Calculate mags of FFT
+                    // Step 3: Calculate mags of FftTransform
                     List<Single> magList = new List<Single>();
                     for (int i = 0; i < length; ++i)
                     {
@@ -226,7 +226,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
                     List<Single> filteredIfftMagList = AverageFilter(ifftMagList, Parent.JudgementWindowSize);
 
                     // Step 7: Calculate score and set result
-                    var score = CalculateSocre(ifftMagList[data.Count - 1], filteredIfftMagList[data.Count - 1]);
+                    var score = CalculateScore(ifftMagList[data.Count - 1], filteredIfftMagList[data.Count - 1]);
                     score /= 10.0f;
                     result.Values[1] = score;
 
@@ -262,7 +262,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
                     Single slopeSum = 0.0f;
                     for (int i = 0; i < n - 1; ++i)
                     {
-                        slopeSum += (data[n-1] - data[i]) / (n - 1 - i);
+                        slopeSum += (data[n - 1] - data[i]) / (n - 1 - i);
                     }
                     return (data[1] + slopeSum);
                 }
@@ -283,7 +283,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
                     return cumSumList;
                 }
 
-                private Single CalculateSocre(Single mag, Single avgMag)
+                private Single CalculateScore(Single mag, Single avgMag)
                 {
                     double safeDivisor = avgMag;
                     if (safeDivisor < 1e-8)

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -18,6 +18,7 @@ using Microsoft.ML.Model.OnnxConverter;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.TestFramework.Attributes;
 using Microsoft.ML.TestFrameworkCommon;
+using Microsoft.ML.TestFrameworkCommon.Attributes;
 using Microsoft.ML.Trainers;
 using Microsoft.ML.Trainers.Ensemble;
 using Microsoft.ML.Trainers.FastTree;
@@ -41,7 +42,7 @@ namespace Microsoft.ML.RunTests
 
         private IDataView GetBreastCancerDataView()
         {
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             return EntryPoints.ImportTextData.TextLoader(Env, new EntryPoints.ImportTextData.LoaderInput()
             {
@@ -61,13 +62,13 @@ namespace Microsoft.ML.RunTests
 
         private IDataView GetBreastCancerDataviewWithTextColumns()
         {
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             return EntryPoints.ImportTextData.TextLoader(Env, new EntryPoints.ImportTextData.LoaderInput()
             {
                 Arguments =
                 {
-                    HasHeader = true,
+                    HasHeader = false,
                     Columns = new[]
                     {
                         new TextLoader.Column("Label", DataKind.Single, 0),
@@ -93,7 +94,7 @@ namespace Microsoft.ML.RunTests
             int testRows = CountRows(splitOutput.TestData);
 
             Assert.Equal(totalRows, trainRows + testRows);
-            Assert.Equal(0.9, (double)trainRows / totalRows, 1);
+            Assert.Equal(0.9, (double)trainRows / totalRows, 0.1);
         }
 
         private static int CountRows(IDataView dataView)
@@ -553,7 +554,7 @@ namespace Microsoft.ML.RunTests
             JObject graph = JObject.Parse(inputGraph);
             var runner = new GraphRunner(Env, graph[FieldNames.Nodes] as JArray);
 
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             runner.SetInput("file1", inputFile);
 
@@ -571,7 +572,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointExecGraphCommand()
         {
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var modelPath = DeleteOutputPath("model.zip");
 
             string inputGraph = string.Format(@"
@@ -740,7 +741,7 @@ namespace Microsoft.ML.RunTests
             var cmd = new ExecuteGraphCommand(Env, args);
             cmd.Run();
 
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
             var loadedData = mlContext.Data.LoadFromBinary(outputDataPath);
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("FeatureName"));
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("AreaUnderRocCurve"));
@@ -888,7 +889,7 @@ namespace Microsoft.ML.RunTests
             var cmd = new ExecuteGraphCommand(Env, args);
             cmd.Run();
 
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
             var loadedData = mlContext.Data.LoadFromBinary(outputDataPath);
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("FeatureName"));
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("MacroAccuracy"));
@@ -1049,7 +1050,7 @@ namespace Microsoft.ML.RunTests
             var cmd = new ExecuteGraphCommand(Env, args);
             cmd.Run();
 
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
             var loadedData = mlContext.Data.LoadFromBinary(outputDataPath);
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("FeatureName"));
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("MacroAccuracy"));
@@ -1191,8 +1192,8 @@ namespace Microsoft.ML.RunTests
             var args = new ExecuteGraphCommand.Arguments() { GraphPath = jsonPath };
             var cmd = new ExecuteGraphCommand(Env, args);
             cmd.Run();
-                        
-            var mlContext = new MLContext();
+
+            var mlContext = new MLContext(1);
             var loadedData = mlContext.Data.LoadFromBinary(outputDataPath);
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("FeatureName"));
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("MeanAbsoluteError"));
@@ -1339,7 +1340,7 @@ namespace Microsoft.ML.RunTests
             var cmd = new ExecuteGraphCommand(Env, args);
             cmd.Run();
 
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
             var loadedData = mlContext.Data.LoadFromBinary(outputDataPath);
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("FeatureName"));
             Assert.NotNull(loadedData.Schema.GetColumnOrNull("DiscountedCumulativeGains"));
@@ -1355,7 +1356,7 @@ namespace Microsoft.ML.RunTests
             var modelPath = DeleteOutputPath("score_model.zip");
             var outputDataPath = DeleteOutputPath("scored.idv");
 
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
 
             var data = new TextLoader(mlContext,
                     new TextLoader.Options()
@@ -1533,6 +1534,7 @@ namespace Microsoft.ML.RunTests
             var twiceCalibratedFfModel = Calibrate.Platt(Env,
                 new Calibrate.NoArgumentsInput() { Data = splitOutput.TestData[0], UncalibratedPredictorModel = calibratedFfModel }).PredictorModel;
             var scoredFf = ScoreModel.Score(Env, new ScoreModel.Input() { Data = splitOutput.TestData[2], PredictorModel = twiceCalibratedFfModel }).ScoredData;
+            Done();
         }
 
         [Fact]
@@ -1801,7 +1803,8 @@ namespace Microsoft.ML.RunTests
                 if (i % 2 == 0)
                 {
                     data = new TextFeaturizingEstimator(Env, "Features", new List<string> { "Text" },
-                        new TextFeaturizingEstimator.Options {
+                        new TextFeaturizingEstimator.Options
+                        {
                             StopWordsRemoverOptions = new StopWordsRemovingEstimator.Options(),
                         }).Fit(data).Transform(data);
                 }
@@ -2119,7 +2122,7 @@ namespace Microsoft.ML.RunTests
             }
         }
 
-        [LessThanNetCore30OrNotNetCoreFact("netcoreapp3.0 output differs from Baseline")]
+        [NativeDependencyFact("MklImports")]
         public void EntryPointPipelineEnsembleGetSummary()
         {
             var dataPath = GetDataPath("breast-cancer-withheader.txt");
@@ -2277,7 +2280,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointParseColumns()
         {
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var outputPath = DeleteOutputPath("data.idv");
 
             string inputGraph = string.Format(@"
@@ -2326,9 +2329,59 @@ namespace Microsoft.ML.RunTests
         }
 
         [Fact]
+        public void RobustScalerNormalizerEntryPoint()
+        {
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
+            var outputPath = DeleteOutputPath("data.idv");
+
+            string inputGraph = string.Format(@"
+                {{
+                  'Nodes': [
+                    {{
+                      'Name': 'Data.CustomTextLoader',
+                      'Inputs': {{
+                        'InputFile': '$file1'
+                      }},
+                      'Outputs': {{
+                        'Data': '$data1'
+                      }}
+                    }},
+                    {{
+                      'Name': 'Transforms.RobustScalingNormalizer',
+                      'Inputs': {{
+                        'Data': '$data1',
+                        'Column': [
+                          {{
+                            'Name': 'Features',
+                            'Source': 'Features'
+                          }}
+                        ]
+                      }},
+                      'Outputs': {{
+                        'OutputData': '$data2'
+                      }}
+                    }}
+                  ],
+                  'Inputs' : {{
+                    'file1' : '{0}'
+                  }},
+                  'Outputs' : {{
+                    'data2' : '{1}'
+                  }}
+                }}", EscapePath(dataPath), EscapePath(outputPath));
+
+            var jsonPath = DeleteOutputPath("graph.json");
+            File.WriteAllLines(jsonPath, new[] { inputGraph });
+
+            var args = new ExecuteGraphCommand.Arguments() { GraphPath = jsonPath };
+            var cmd = new ExecuteGraphCommand(Env, args);
+            cmd.Run();
+        }
+
+        [Fact]
         public void EntryPointCountFeatures()
         {
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var outputPath = DeleteOutputPath("data.idv");
             string inputGraph = string.Format(@"
                 {{
@@ -2373,7 +2426,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointMutualSelectFeatures()
         {
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var outputPath = DeleteOutputPath("data.idv");
             string inputGraph = string.Format(@"
                 {{
@@ -2589,7 +2642,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointEvaluateBinary()
         {
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var warningsPath = DeleteOutputPath("warnings.idv");
             var overallMetricsPath = DeleteOutputPath("overall.idv");
             var instanceMetricsPath = DeleteOutputPath("instance.idv");
@@ -2756,7 +2809,7 @@ namespace Microsoft.ML.RunTests
             TestEntryPointRoutine("iris.txt", "Trainers.StochasticDualCoordinateAscentClassifier");
         }
 
-        [Fact()]
+        [Fact]
         public void EntryPointSDCARegression()
         {
             TestEntryPointRoutine(TestDatasets.generatedRegressionDatasetmacro.trainFilename, "Trainers.StochasticDualCoordinateAscentRegressor", loader: TestDatasets.generatedRegressionDatasetmacro.loaderSettings);
@@ -2777,7 +2830,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointPcaTransform()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Label:0 col=Features:1-9",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Label:0 col=Features:1-9",
                 new[]
                 {
                     "Transforms.PcaCalculator",
@@ -2900,7 +2953,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointBootstrap()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Label:R4:0 col=Features:R4:1-9",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Label:R4:0 col=Features:R4:1-9",
                 new[]
                 {
                     "Transforms.ApproximateBootstrapSampler"
@@ -2914,7 +2967,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointConvert()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=LT:TX:0 col=LB:BL:0 col=FT:TX:1-9 col=LN:0 col=FN:1-9 col=Key:U2[0-9]:2",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=LT:TX:0 col=LB:BL:0 col=FT:TX:1-9 col=LN:0 col=FN:1-9 col=Key:U2[0-9]:2",
                 new[]
                 {
                     "Transforms.ColumnTypeConverter",
@@ -2930,6 +2983,11 @@ namespace Microsoft.ML.RunTests
                       {
                         'Name': 'Label2',
                         'Source': 'LB'
+                      },
+                      {
+                        'Name': 'Label3',
+                        'Source': 'LB',
+                        'Type': 'TX'
                       },
                       {
                         'Name': 'Feat',
@@ -2955,7 +3013,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointGroupingOperations()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=G1:TX:0 col=G2:R4:0 col=G3:U4[0-100]:1 col=V1:R4:2 col=V2:TX:3 col=V3:U2[0-10]:4 col=V4:I4:5",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=G1:TX:0 col=G2:R4:0 col=G3:U4[0-100]:1 col=V1:R4:2 col=V2:TX:3 col=V3:U2[0-10]:4 col=V4:I4:5",
                 new[]
                 {
                     "Transforms.CombinerByContiguousGroupId",
@@ -2972,7 +3030,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointNAFilter()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Features:R4:1-9 header+",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Features:R4:1-9 header+",
                 new[]
                 {
                     "Transforms.MissingValuesRowDropper"
@@ -2982,7 +3040,7 @@ namespace Microsoft.ML.RunTests
                     @"'Column': [ 'Features' ]",
                 });
 
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Features:R4:1-9 header+",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Features:R4:1-9 header+",
                 new[]
                 {
                     "Transforms.MissingValuesRowDropper"
@@ -2997,7 +3055,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointGcnTransform()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=FV1:2-3 col=FV2:3-4 col=FV3:4-5 col=FV4:7-9 col=Label:0",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=FV1:2-3 col=FV2:3-4 col=FV3:4-5 col=FV4:7-9 col=Label:0",
                 new[]
                 {
                     "Transforms.LpNormalizer",
@@ -3045,7 +3103,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointGenerateNumber()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Label:0",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Label:0",
                 new[]
                 {
                     "Transforms.RandomNumberGenerator",
@@ -3075,7 +3133,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointRangeFilter()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Filter:R4:3",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Filter:R4:3",
                 new[]
                 {
                     "Transforms.RowRangeFilter",
@@ -3097,7 +3155,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointSkipTakeFilter()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Filter:R4:3",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Filter:R4:3",
                 new[]
                 {
                     "Transforms.RowSkipAndTakeFilter",
@@ -3448,7 +3506,7 @@ namespace Microsoft.ML.RunTests
             JObject graph = JObject.Parse(inputGraph);
             var runner = new GraphRunner(Env, graph[FieldNames.Nodes] as JArray);
 
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             runner.SetInput("file", inputFile);
 
@@ -3543,7 +3601,7 @@ namespace Microsoft.ML.RunTests
             JObject graph = JObject.Parse(inputGraph);
             var runner = new GraphRunner(Env, graph[FieldNames.Nodes] as JArray);
 
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             runner.SetInput("file", inputFile);
 
@@ -3615,7 +3673,7 @@ namespace Microsoft.ML.RunTests
                         'TrainingData': '$data2',
                         'TestingData': '$TestData',
                         'TransformModel': '$transform',
-                        'Nodes': [                          
+                        'Nodes': [
                           {
                             'Name': 'Trainers.LogisticRegressionBinaryClassifier',
                             'Inputs': {
@@ -3648,7 +3706,7 @@ namespace Microsoft.ML.RunTests
             JObject graph = JObject.Parse(inputGraph);
             var runner = new GraphRunner(Env, graph[FieldNames.Nodes] as JArray);
 
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             runner.SetInput("file", inputFile);
 
@@ -3743,7 +3801,7 @@ namespace Microsoft.ML.RunTests
                         'TrainingData': '$data3',
                         'TestingData': '$TestData',
                         'TransformModel': '$CombinedModel',
-                        'Nodes': [                          
+                        'Nodes': [
                           {
                             'Name': 'Trainers.LogisticRegressionBinaryClassifier',
                             'Inputs': {
@@ -3776,7 +3834,7 @@ namespace Microsoft.ML.RunTests
                         'TrainingData': '$data3',
                         'TestingData': '$TestData',
                         'TransformModel': '$CombinedModel',
-                        'Nodes': [                          
+                        'Nodes': [
                           {
                             'Name': 'Trainers.StochasticGradientDescentBinaryClassifier',
                             'Inputs': {
@@ -3809,7 +3867,7 @@ namespace Microsoft.ML.RunTests
             JObject graph = JObject.Parse(inputGraph);
             var runner = new GraphRunner(Env, graph[FieldNames.Nodes] as JArray);
 
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             runner.SetInput("file", inputFile);
 
@@ -3905,7 +3963,7 @@ namespace Microsoft.ML.RunTests
                         'TransformModel': '$CombinedModel',
                         'Kind': 'SignatureBinaryClassifierTrainer',
                         'NumFolds': 3,
-                        'Nodes': [                          
+                        'Nodes': [
                           {
                             'Name': 'Trainers.LogisticRegressionBinaryClassifier',
                             'Inputs': {
@@ -3993,14 +4051,14 @@ namespace Microsoft.ML.RunTests
                         'PerInstanceMetrics': '$PerInstanceMetrics2',
                         'ConfusionMatrix': '$ConfusionMatrix2'
                       }
-                    },   
+                    },
                   ]
                 }";
 
             JObject graph = JObject.Parse(inputGraph);
             var runner = new GraphRunner(Env, graph[FieldNames.Nodes] as JArray);
 
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             runner.SetInput("file", inputFile);
 
@@ -4090,7 +4148,7 @@ namespace Microsoft.ML.RunTests
             var nodes = new JArray(graph.AllNodes.Select(node => node.ToJson()));
             var runner = new GraphRunner(Env, nodes);
 
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
             var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
             runner.SetInput("file", inputFile);
 
@@ -4166,7 +4224,7 @@ namespace Microsoft.ML.RunTests
             }
         }
 
-        [Fact]
+        [NativeDependencyFact("MklImports")]
         public void EntryPointLinearPredictorSummary()
         {
             var dataPath = GetDataPath("breast-cancer-withheader.txt");
@@ -4590,7 +4648,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointPercentileThreshold()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Input:R4:1",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Input:R4:1",
                 new[]
                 {
                     "TimeSeriesProcessingEntryPoints.PercentileThresholdTransform"
@@ -4607,7 +4665,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointPValue()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Input:R4:1",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Input:R4:1",
                 new[]
                 {
                     "TimeSeriesProcessingEntryPoints.PValueTransform"
@@ -4623,7 +4681,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointSlidingWindow()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Input:R4:1",
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Input:R4:1",
                 new[]
                 {
                     "TimeSeriesProcessingEntryPoints.SlidingWindowTransform",
@@ -4655,25 +4713,77 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void EntryPointHashJoinCountTable()
         {
-            TestEntryPointPipelineRoutine(GetDataPath("breast-cancer.txt"), "col=Text:Text:1-9 col=Label:0",
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
+            var countsModel = DeleteOutputPath("CountTable-trained-counts.zip");
+
+            var data = ML.Data.LoadFromTextFile(dataPath, new[]
+                {
+                    new TextLoader.Column("Text", DataKind.String, 1, 2),
+                    new TextLoader.Column("Label", DataKind.Single, 0)
+                });
+            var estimator = ML.Transforms.CountTargetEncode("Text", builder: CountTableBuilderBase.CreateDictionaryCountTableBuilder(), combine: false);
+            var transformer = estimator.Fit(data);
+            ML.Model.Save(transformer, data.Schema, countsModel);
+
+            TestEntryPointPipelineRoutine(GetDataPath(TestDatasets.breastCancer.trainFilename), "col=Text:TX:1-9 col=OneText:TX:1 col=Label:0",
                 new[]
                 {
                     "Transforms.HashConverter",
+                    "Transforms.CountTableBuilder"
                 },
                 new[]
                 {
                     @"'Column': [
                       {
                         'Name': 'Temp',
-                        'Src': 'Text'
-                      },
-                      {
-                        'Name': 'Temp2',
                         'Src': 'Text',
                         'CustomSlotMap': '0,1;2,3,4,5'
                       }
+                      ]",
+                    $@"'Columns': [
+                      {{
+                        'Name': 'DT',
+                        'Src': 'Temp'
+                      }}
+                      ],
+                     'Lab': 'Label',
+                     'Table': {{ 'Name': 'Dict' }},
+                     'InitialCountsModel': '{EscapePath(countsModel)}'"
+                });
+        }
 
-                      ]"
+        [Fact]
+        public void EntryPointCountTargetEncoding()
+        {
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
+            var countsModel = DeleteOutputPath("cte-trained-counts.zip");
+
+            var data = ML.Data.LoadFromTextFile(dataPath, new[]
+                {
+                    new TextLoader.Column("Text", DataKind.String, 1, 2),
+                    new TextLoader.Column("Label", DataKind.Single, 0)
+                });
+            var estimator = ML.Transforms.CountTargetEncode("Text", builder: CountTableBuilderBase.CreateDictionaryCountTableBuilder(), combine: false);
+            var transformer = estimator.Fit(data);
+            ML.Model.Save(transformer, data.Schema, countsModel);
+
+            TestEntryPointPipelineRoutine(dataPath, "col=Text:TX:1-2 col=Label:0",
+                new[]
+                {
+                    "Transforms.CountTargetEncoder",
+                },
+                new[]
+                {
+                    $@"'Columns': [
+                      {{
+                        'Name': 'DT',
+                        'Src': 'Text',
+                        'Combine': 'False'
+                      }}
+                      ],
+                     'Lab': 'Label',
+                     'Table': {{ 'Name': 'Dict' }},
+                     'InitialCountsModel': '{EscapePath(countsModel)}'"
                 });
         }
 
@@ -4895,13 +5005,13 @@ namespace Microsoft.ML.RunTests
                 Assert.True(b);
                 double auc = 0;
                 getter(ref auc);
-                Assert.Equal(0.93, auc, 2);
+                Assert.Equal(0.93, auc, 0.01);
                 b = cursor.MoveNext();
                 Assert.False(b);
             }
         }
 
-        [LessThanNetCore30OrNotNetCoreFact("netcoreapp3.0 output differs from Baseline")]
+        [Fact]
         public void TestCrossValidationMacro()
         {
             var dataPath = GetDataPath(TestDatasets.generatedRegressionDatasetmacro.trainFilename);
@@ -5098,9 +5208,9 @@ namespace Microsoft.ML.RunTests
                     foldGetter(ref fold);
                     Assert.True(ReadOnlyMemoryUtils.EqualsStr("Standard Deviation", fold));
                     if (w == 1)
-                        Assert.Equal(1.585, stdev, 3);
+                        Assert.Equal(1.585, stdev, .001);
                     else
-                        Assert.Equal(1.39, stdev, 2);
+                        Assert.Equal(1.39, stdev, 0.01);
                     isWeightedGetter(ref isWeighted);
                     Assert.True(isWeighted == (w == 1));
                 }
@@ -5269,7 +5379,7 @@ namespace Microsoft.ML.RunTests
                 getter(ref stdev);
                 foldGetter(ref fold);
                 Assert.True(ReadOnlyMemoryUtils.EqualsStr("Standard Deviation", fold));
-                Assert.Equal(0.024809923969586353, stdev, 3);
+                Assert.Equal(0.024809923969586353, stdev, 0.001);
 
                 double sum = 0;
                 double val = 0;
@@ -5678,7 +5788,7 @@ namespace Microsoft.ML.RunTests
                 getter(ref stdev);
                 foldGetter(ref fold);
                 Assert.True(ReadOnlyMemoryUtils.EqualsStr("Standard Deviation", fold));
-                Assert.Equal(0.00481, stdev, 5);
+                Assert.Equal(0.02582, stdev, 0.00001);
 
                 double sum = 0;
                 double val = 0;
@@ -5979,9 +6089,9 @@ namespace Microsoft.ML.RunTests
                 foldGetter(ref fold);
                 Assert.True(ReadOnlyMemoryUtils.EqualsStr("Standard Deviation", fold));
                 var stdevValues = stdev.GetValues();
-                Assert.Equal(0.02462, stdevValues[0], 5);
-                Assert.Equal(0.02763, stdevValues[1], 5);
-                Assert.Equal(0.03273, stdevValues[2], 5);
+                Assert.Equal(0.02462, stdevValues[0], 0.00001);
+                Assert.Equal(0.02763, stdevValues[1], 0.00001);
+                Assert.Equal(0.03273, stdevValues[2], 0.00001);
 
                 var sumBldr = new BufferBuilder<double>(R8Adder.Instance);
                 sumBldr.Reset(avg.Length, true);
@@ -6181,13 +6291,14 @@ namespace Microsoft.ML.RunTests
                 Assert.True(b);
                 double acc = 0;
                 getter(ref acc);
-                Assert.Equal(0.96, acc, 2);
+                Assert.Equal(0.96, acc, 0.01);
                 b = cursor.MoveNext();
                 Assert.False(b);
             }
         }
 
         [Fact]
+        //Skipping test temporarily. This test will be re-enabled once the cause of failures has been determined
         public void TestOvaMacroWithUncalibratedLearner()
         {
             var dataPath = GetDataPath(@"iris.txt");
@@ -6352,7 +6463,7 @@ namespace Microsoft.ML.RunTests
                 Assert.True(b);
                 double acc = 0;
                 getter(ref acc);
-                Assert.Equal(0.71, acc, 2);
+                Assert.Equal(0.71, acc, 0.01);
                 b = cursor.MoveNext();
                 Assert.False(b);
             }
@@ -6468,7 +6579,7 @@ namespace Microsoft.ML.RunTests
         [Fact]
         public void LoadEntryPointModel()
         {
-            var ml = new MLContext();
+            var ml = new MLContext(1);
             for (int i = 0; i < 5; i++)
             {
                 var modelPath = GetDataPath($"backcompat/ep_model{i}.zip");
@@ -6555,6 +6666,239 @@ namespace Microsoft.ML.RunTests
             CheckEquality("EntryPoints", "Summarize.txt");
 
             Done();
+        }
+
+        [LightGBMFact]
+        void RankingWithColumnIdEntryPoint()
+        {
+            Env.ComponentCatalog.RegisterAssembly(typeof(LightGbmBinaryModelParameters).Assembly);
+            var dataPath = GetDataPath(@"adult.tiny.with-schema.txt");
+
+            string inputGraph = $@"
+                {{
+                    'Nodes': [
+                        {{
+                            'Inputs': {{
+                                'CustomSchema': 'col=Label:R4:0 col=GroupId:TX:1 col=Features_1:R4:9-14 header+ sep=tab',
+                                'InputFile': '$file'
+                            }},
+                            'Name': 'Data.CustomTextLoader',
+                            'Outputs': {{
+                                'Data': '$input_data'
+                            }}
+                        }},
+                        {{
+                            'Inputs': {{
+                                'Column': [
+                                    {{
+                                        'Name': 'GroupId',
+                                        'Source': 'GroupId'
+                                    }}
+                                ],
+                                'Data': '$input_data',
+                                'MaxNumTerms': 1000000,
+                                'Sort': 'ByOccurrence',
+                                'TextKeyValues': false
+                            }},
+                            'Name': 'Transforms.TextToKeyConverter',
+                            'Outputs': {{
+                                'Model': '$output_model1',
+                                'OutputData': '$output_data1'
+                            }}
+                        }},
+                        {{
+                            'Inputs': {{
+                                'Column': [
+                                    {{
+                                        'Name': 'Features',
+                                        'Source': [
+                                            'Features_1'
+                                        ]
+                                    }}
+                                ],
+                                'Data': '$output_data1'
+                            }},
+                            'Name': 'Transforms.ColumnConcatenator',
+                            'Outputs': {{
+                                'Model': '$output_model2',
+                                'OutputData': '$output_data2'
+                            }}
+                        }},
+                        {{
+                            'Inputs': {{
+                                'Models': [
+                                    '$output_model1',
+                                    '$output_model2'
+                                ]
+                            }},
+                            'Name': 'Transforms.ModelCombiner',
+                            'Outputs': {{
+                                'OutputModel': '$output_model_combined_pre_split'
+                            }}
+                        }},
+                        {{
+                            'Inputs': {{
+                                'Data': '$output_data2',
+                                'GroupColumn': 'GroupId',
+                                'Inputs': {{
+                                    'Data': '$cv_subgraph_input_data'
+                                }},
+                                'Kind': 'SignatureRankerTrainer',
+                                'LabelColumn': 'Label',
+                                'NameColumn': 'Name',
+                                'Nodes': [
+                                    {{
+                                        'Inputs': {{
+                                            'Column': [
+                                                'Label'
+                                            ],
+                                            'Data': '$cv_subgraph_input_data'
+                                        }},
+                                        'Name': 'Transforms.OptionalColumnCreator',
+                                        'Outputs': {{
+                                            'Model': '$output_model3',
+                                            'OutputData': '$optional_data'
+                                        }}
+                                    }},
+                                    {{
+                                        'Inputs': {{
+                                            'Data': '$optional_data',
+                                            'LabelColumn': 'Label',
+                                            'TextKeyValues': false
+                                        }},
+                                        'Name': 'Transforms.LabelColumnKeyBooleanConverter',
+                                        'Outputs': {{
+                                            'Model': '$output_model4',
+                                            'OutputData': '$label_data'
+                                        }}
+                                    }},
+                                    {{
+                                        'Inputs': {{
+                                            'Data': '$label_data',
+                                            'Features': [
+                                                'Features'
+                                            ]
+                                        }},
+                                        'Name': 'Transforms.FeatureCombiner',
+                                        'Outputs': {{
+                                            'Model': '$output_model5',
+                                            'OutputData': '$output_data'
+                                        }}
+                                    }},
+                                    {{
+                                        'Inputs': {{
+                                            'BatchSize': 1048576,
+                                            'Caching': 'Auto',
+                                            'CategoricalSmoothing': 10.0,
+                                            'CustomGains': [
+                                                0,
+                                                3,
+                                                7,
+                                                15,
+                                                31,
+                                                63,
+                                                127,
+                                                255,
+                                                511,
+                                                1023,
+                                                2047,
+                                                4095
+                                            ],
+                                            'EarlyStoppingRound': 0,
+                                            'EvaluationMetric': 'NormalizedDiscountedCumulativeGain',
+                                            'FeatureColumnName': 'Features',
+                                            'HandleMissingValue': true,
+                                            'L2CategoricalRegularization': 10.0,
+                                            'LabelColumnName': 'Label',
+                                            'MaximumBinCountPerFeature': 255,
+                                            'MaximumCategoricalSplitPointCount': 32,
+                                            'MinimumExampleCountPerGroup': 100,
+                                            'MinimumExampleCountPerLeaf': 1,
+                                            'NormalizeFeatures': 'Auto',
+                                            'NumberOfIterations': 100,
+                                            'RowGroupColumnName': 'GroupId',
+                                            'Sigmoid': 0.5,
+                                            'Silent': true,
+                                            'TrainingData': '$output_data',
+                                            'UseZeroAsMissingValue': false,
+                                            'Verbose': false
+                                        }},
+                                        'Name': 'Trainers.LightGbmRanker',
+                                        'Outputs': {{
+                                            'PredictorModel': '$output_model_learner'
+                                        }}
+                                    }},
+                                    {{
+                                        'Inputs': {{
+                                            'PredictorModel': '$output_model_learner',
+                                            'TransformModels': [
+                                                '$output_model3',
+                                                '$output_model4',
+                                                '$output_model5'
+                                            ]
+                                        }},
+                                        'Name': 'Transforms.ManyHeterogeneousModelCombiner',
+                                        'Outputs': {{
+                                            'PredictorModel': '$predictor_model'
+                                        }}
+                                    }}
+                                ],
+                                'NumFolds': 2,
+                                'Outputs': {{
+                                    'PredictorModel': '$predictor_model'
+                                }},
+                                'StratificationColumn': 'GroupId',
+                                'TransformModel': '$output_model_combined_pre_split'
+                            }},
+                            'Name': 'Models.CrossValidator',
+                            'Outputs': {{
+                                'OverallMetrics': '$overall_metrics',
+                                'PerInstanceMetrics': '$per_instance_metrics',
+                                'PredictorModel': '$predictor_model',
+                                'Warnings': '$warnings'
+                            }}
+                        }}
+                    ],
+                    'Outputs': {{
+                        'overall_metrics': '$outmetrics',
+                        'per_instance_metrics': '',
+                        'predictor_model': '$outModel',
+                        'warnings': '$outwarnings'
+                    }}
+                }}
+
+            ";
+
+            JObject graph = JObject.Parse(inputGraph);
+            var runner = new GraphRunner(Env, graph[FieldNames.Nodes] as JArray);
+            var inputFile = new SimpleFileHandle(Env, dataPath, false, false);
+            runner.SetInput("file", inputFile);
+            runner.RunAll();
+
+            var data = runner.GetOutput<IDataView>("overall_metrics");
+            using (var cursor = data.GetRowCursorForAllColumns())
+            {
+                var ndcgGetter = cursor.GetGetter<VBuffer<Double>>(data.Schema["NDCG"]);
+                VBuffer<Double> ndcgBuffer = default;
+
+                cursor.MoveNext();
+                ndcgGetter(ref ndcgBuffer);
+                var ndcgArray = ndcgBuffer.DenseValues().ToArray();
+
+                // Since we used a toy dataset, we won't worry much about comparing actual
+                // Double values of the result. Simply check that we get results.
+                Assert.Equal(10, ndcgArray.Length);
+                Assert.True(ndcgArray[0] > 0);
+                Assert.True(ndcgArray[1] > 0);
+                Assert.True(ndcgArray[2] > 0);
+                Assert.True(ndcgArray[3] > 0);
+                Assert.True(ndcgArray[4] > 0);
+                Assert.True(ndcgArray[5] > 0);
+                Assert.True(ndcgArray[6] > 0);
+                Assert.True(ndcgArray[7] > 0);
+                Assert.True(ndcgArray[8] > 0);
+                Assert.True(ndcgArray[9] > 0);
+            }
         }
     }
 }

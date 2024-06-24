@@ -4,8 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Linq;
 using System.Text;
 using Microsoft.ML;
@@ -140,16 +138,6 @@ namespace Microsoft.ML.Transforms.Image
             base.SaveColumns(ctx);
         }
 
-        private static readonly ColorMatrix _grayscaleColorMatrix = new ColorMatrix(
-                new float[][]
-                {
-                    new float[] {.3f, .3f, .3f, 0, 0},
-                    new float[] {.59f, .59f, .59f, 0, 0},
-                    new float[] {.11f, .11f, .11f, 0, 0},
-                    new float[] {0, 0, 0, 1, 0},
-                    new float[] {0, 0, 0, 0, 1}
-                });
-
         private protected override IRowMapper MakeRowMapper(DataViewSchema schema) => new Mapper(this, schema);
 
         private protected override void CheckInputColumn(DataViewSchema inputSchema, int col, int srcCol)
@@ -160,7 +148,7 @@ namespace Microsoft.ML.Transforms.Image
 
         private sealed class Mapper : OneToOneMapperBase
         {
-            private ImageGrayscalingTransformer _parent;
+            private readonly ImageGrayscalingTransformer _parent;
 
             public Mapper(ImageGrayscalingTransformer parent, DataViewSchema inputSchema)
                 : base(parent.Host.Register(nameof(Mapper)), parent, inputSchema)
@@ -176,8 +164,8 @@ namespace Microsoft.ML.Transforms.Image
                 Contracts.AssertValue(input);
                 Contracts.Assert(0 <= iinfo && iinfo < _parent.ColumnPairs.Length);
 
-                var src = default(Bitmap);
-                var getSrc = input.GetGetter<Bitmap>(input.Schema[ColMapNewToOld[iinfo]]);
+                var src = default(MLImage);
+                var getSrc = input.GetGetter<MLImage>(input.Schema[ColMapNewToOld[iinfo]]);
 
                 disposer =
                     () =>
@@ -189,8 +177,8 @@ namespace Microsoft.ML.Transforms.Image
                         }
                     };
 
-                ValueGetter<Bitmap> del =
-                    (ref Bitmap dst) =>
+                ValueGetter<MLImage> del =
+                    (ref MLImage dst) =>
                     {
                         if (dst != null)
                             dst.Dispose();
@@ -199,16 +187,9 @@ namespace Microsoft.ML.Transforms.Image
                         if (src == null || src.Height <= 0 || src.Width <= 0)
                             return;
 
-                        dst = new Bitmap(src.Width, src.Height);
-                        ImageAttributes attributes = new ImageAttributes();
-                        attributes.SetColorMatrix(_grayscaleColorMatrix);
-                        var srcRectangle = new Rectangle(0, 0, src.Width, src.Height);
-                        using (var g = Graphics.FromImage(dst))
-                        {
-                            g.DrawImage(src, srcRectangle, 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, attributes);
-                        }
-
+                        dst = src.CloneWithGrayscale();
                         dst.Tag = src.Tag;
+
                         Contracts.Assert(dst.Width == src.Width && dst.Height == src.Height);
                     };
 
@@ -226,9 +207,10 @@ namespace Microsoft.ML.Transforms.Image
     /// |  |  |
     /// | -- | -- |
     /// | Does this estimator need to look at the data to train its parameters? | No |
-    /// | Input column data type | <xref:System.Drawing.Bitmap> |
-    /// | Output column data type | <xref:System.Drawing.Bitmap> |
+    /// | Input column data type | <xref:Microsoft.ML.Data.MLImage> |
+    /// | Output column data type | <xref:Microsoft.ML.Data.MLImage> |
     /// | Required NuGet in addition to Microsoft.ML | Microsoft.ML.ImageAnalytics |
+    /// | Exportable to ONNX | No |
     ///
     /// The resulting <xref:Microsoft.ML.Transforms.Image.ImageGrayscalingTransformer> creates a new column, named as specified in the output column name parameters, and
     /// converts the image from the input column into a grayscale image.
@@ -237,7 +219,7 @@ namespace Microsoft.ML.Transforms.Image
     /// Another use case for converting to grayscale is to generate new images out of the existing ones, so you can have a larger dataset,
     /// a technique known as [data augmentation](http://www.stat.harvard.edu/Faculty_Content/meng/JCGS01.pdf).
     /// For end-to-end image processing pipelines, and scenarios in your applications, see the
-    /// [examples](https://github.com/dotnet/machinelearning-samples/tree/master/samples/csharp/getting-started) in the machinelearning-samples github repository.
+    /// [examples](https://github.com/dotnet/machinelearning-samples/tree/main/samples/csharp/getting-started) in the machinelearning-samples github repository.
     ///
     /// Check the See Also section for links to usage examples.
     /// ]]>

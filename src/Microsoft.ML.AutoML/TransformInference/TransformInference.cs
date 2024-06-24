@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -156,6 +156,9 @@ namespace Microsoft.ML.AutoML
 
             // For image columns, use image transforms.
             yield return new Experts.Image(context);
+
+            // For groupId columns, use GroupId transforms.
+            yield return new Experts.GroupId(context);
         }
 
         internal static class Experts
@@ -205,6 +208,28 @@ namespace Microsoft.ML.AutoML
                             column.Purpose == ColumnPurpose.ItemId)
                         {
                             yield return ValueToKeyMappingExtension.CreateSuggestedTransform(Context, column.ColumnName, column.ColumnName);
+                        }
+                    }
+                }
+            }
+
+            internal sealed class GroupId : TransformInferenceExpertBase
+            {
+                public GroupId(MLContext context) : base(context)
+                {
+                }
+
+                public override IEnumerable<SuggestedTransform> Apply(IntermediateColumn[] columns, TaskKind task)
+                {
+                    if (task != TaskKind.Ranking)
+                    {
+                        yield break;
+                    }
+                    foreach (var column in columns)
+                    {
+                        if (column.Purpose == ColumnPurpose.GroupId && !column.Type.IsKey())
+                        {
+                            yield return HashingExtension.CreateSuggestedTransform(Context, column.ColumnName, column.ColumnName);
                         }
                     }
                 }
@@ -358,7 +383,7 @@ namespace Microsoft.ML.AutoML
                         var columnDestSuffix = "_featurized";
                         string columnDestRenamed = $"{column.ColumnName}{columnDestSuffix}";
 
-                        yield return ImageLoadingExtension.CreateSuggestedTransform(Context, column.ColumnName, columnDestRenamed);
+                        yield return RawByteImageLoading.CreateSuggestedTransform(Context, column.ColumnName, columnDestRenamed);
                     }
                 }
             }
@@ -407,7 +432,7 @@ namespace Microsoft.ML.AutoML
             }
 
             // include all numeric columns of type R4
-            foreach(var intermediateCol in intermediateCols)
+            foreach (var intermediateCol in intermediateCols)
             {
                 if (intermediateCol.Purpose == ColumnPurpose.NumericFeature &&
                     intermediateCol.Type.GetItemType() == NumberDataViewType.Single)
@@ -419,6 +444,10 @@ namespace Microsoft.ML.AutoML
             // remove column with 'Label' purpose
             var labelColumnName = intermediateCols.FirstOrDefault(c => c.Purpose == ColumnPurpose.Label)?.ColumnName;
             concatColNames.Remove(labelColumnName);
+
+            // remove column with 'GroupId' purpose
+            var groupColumnName = intermediateCols.FirstOrDefault(c => c.Purpose == ColumnPurpose.GroupId)?.ColumnName;
+            concatColNames.RemoveAll(s => s == groupColumnName);
 
             intermediateCols = intermediateCols.Where(c => c.Purpose == ColumnPurpose.NumericFeature ||
                 c.Purpose == ColumnPurpose.CategoricalFeature || c.Purpose == ColumnPurpose.TextFeature ||
@@ -456,7 +485,7 @@ namespace Microsoft.ML.AutoML
                     continue;
                 }
 
-                for(var i = 0; ; i++)
+                for (var i = 0; ; i++)
                 {
                     var newColName = $"{desiredColName}{i}";
                     if (!existingColNames.Contains(newColName))

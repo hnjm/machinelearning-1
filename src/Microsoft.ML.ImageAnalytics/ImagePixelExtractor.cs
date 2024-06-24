@@ -4,8 +4,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -157,7 +155,7 @@ namespace Microsoft.ML.Transforms.Image
         /// <param name="inputColumnName">Name of column to transform. If set to <see langword="null"/>, the value of the <paramref name="outputColumnName"/> will be used as source.</param>
         /// <param name="colorsToExtract">What colors to extract.</param>
         /// <param name="orderOfExtraction">In which order to extract colors from pixel.</param>
-        /// <param name="interleavePixelColors">Whether to interleave the pixels colors, meaning keep them in the <paramref name="orderOfExtraction"/> order, or leave them in the plannar form:
+        /// <param name="interleavePixelColors">Whether to interleave the pixels colors, meaning keep them in the <paramref name="orderOfExtraction"/> order, or leave them in the planner form:
         /// all the values for one color for all pixels, then all the values for another color and so on.</param>
         /// <param name="offsetImage">Offset each pixel's color value by this amount. Applied to color value first.</param>
         /// <param name="scaleImage">Scale each pixel's color value by this amount. Applied to color value second.</param>
@@ -322,8 +320,8 @@ namespace Microsoft.ML.Transforms.Image
                 Contracts.Assert(size == planes * height * width);
                 int cpix = height * width;
 
-                var getSrc = input.GetGetter<Bitmap>(input.Schema[ColMapNewToOld[iinfo]]);
-                var src = default(Bitmap);
+                var getSrc = input.GetGetter<MLImage>(input.Schema[ColMapNewToOld[iinfo]]);
+                var src = default(MLImage);
 
                 disposer =
                     () =>
@@ -349,20 +347,7 @@ namespace Microsoft.ML.Transforms.Image
 
                         Host.Check(src.Height == height && src.Width == width);
 
-                        if (src.PixelFormat != PixelFormat.Format32bppArgb && src.PixelFormat != PixelFormat.Format24bppRgb)
-                        {
-                            var clone = src.Clone(new Rectangle(0, 0, src.Width, src.Height), PixelFormat.Format32bppArgb);
-                            clone.Tag = src.Tag;
-                            src.Dispose();
-                            src = clone;
-                            using (var ch = Host.Start(nameof(ImagePixelExtractingTransformer)))
-                            {
-                                ch.Warning($"Encountered image {src.Tag} of unsupported pixel format {src.PixelFormat} but converting it to {nameof(PixelFormat.Format32bppArgb)}.");
-                            }
-                        }
-
                         var editor = VBufferEditor.Create(ref dst, size);
-                        var values = editor.Values;
 
                         float offset = ex.OffsetImage;
                         float scale = ex.ScaleImage;
@@ -377,40 +362,52 @@ namespace Microsoft.ML.Transforms.Image
 
                         ImagePixelExtractingEstimator.GetOrder(ex.OrderOfExtraction, ex.ColorsToExtract, out int a, out int r, out int b, out int g);
 
+                        ReadOnlySpan<byte> pixelData = src.Pixels;
+                        (int alphaIndex, int redIndex, int greenIndex, int blueIndex) = src.PixelFormat switch
+                        {
+                            MLPixelFormat.Bgra32 => (3, 2, 1, 0),
+                            MLPixelFormat.Rgba32 => (3, 0, 1, 2),
+                            _ => throw new InvalidOperationException($"Image pixel format is not supported")
+                        };
+
                         int h = height;
                         int w = width;
+                        int pixelByteCount = alphaIndex > 0 ? 4 : 3;
+                        int ix = 0;
 
                         if (ex.InterleavePixelColors)
                         {
                             int idst = 0;
                             for (int y = 0; y < h; ++y)
+                            {
                                 for (int x = 0; x < w; x++)
                                 {
-                                    var pb = src.GetPixel(x, y);
                                     if (!vb.IsEmpty)
                                     {
-                                        if (a != -1) { vb[idst + a] = pb.A; }
-                                        if (r != -1) { vb[idst + r] = pb.R; }
-                                        if (g != -1) { vb[idst + g] = pb.G; }
-                                        if (b != -1) { vb[idst + b] = pb.B; }
+                                        if (a != -1) { vb[idst + a] = (byte)(alphaIndex > 0 ? pixelData[ix + alphaIndex] : 255); }
+                                        if (r != -1) { vb[idst + r] = pixelData[ix + redIndex]; }
+                                        if (g != -1) { vb[idst + g] = pixelData[ix + greenIndex]; }
+                                        if (b != -1) { vb[idst + b] = pixelData[ix + blueIndex]; }
                                     }
                                     else if (!needScale)
                                     {
-                                        if (a != -1) { vf[idst + a] = pb.A; }
-                                        if (r != -1) { vf[idst + r] = pb.R; }
-                                        if (g != -1) { vf[idst + g] = pb.G; }
-                                        if (b != -1) { vf[idst + b] = pb.B; }
+                                        if (a != -1) { vf[idst + a] = (byte)(alphaIndex > 0 ? pixelData[ix + alphaIndex] : 255); }
+                                        if (r != -1) { vf[idst + r] = pixelData[ix + redIndex]; }
+                                        if (g != -1) { vf[idst + g] = pixelData[ix + greenIndex]; }
+                                        if (b != -1) { vf[idst + b] = pixelData[ix + blueIndex]; }
                                     }
                                     else
                                     {
-
-                                        if (a != -1) { vf[idst + a] = (pb.A - offset) * scale; }
-                                        if (r != -1) { vf[idst + r] = (pb.R - offset) * scale; }
-                                        if (g != -1) { vf[idst + g] = (pb.G - offset) * scale; }
-                                        if (b != -1) { vf[idst + b] = (pb.B - offset) * scale; }
+                                        if (a != -1) { vf[idst + a] = ((byte)(alphaIndex > 0 ? pixelData[ix + alphaIndex] : 255) - offset) * scale; }
+                                        if (r != -1) { vf[idst + r] = (pixelData[ix + redIndex] - offset) * scale; }
+                                        if (g != -1) { vf[idst + g] = (pixelData[ix + greenIndex] - offset) * scale; }
+                                        if (b != -1) { vf[idst + b] = (pixelData[ix + blueIndex] - offset) * scale; }
                                     }
+
+                                    ix += pixelByteCount;
                                     idst += ex.Planes;
                                 }
+                            }
                             Contracts.Assert(idst == size);
                         }
                         else
@@ -423,28 +420,27 @@ namespace Microsoft.ML.Transforms.Image
                                 {
                                     if (!vb.IsEmpty)
                                     {
-                                        var pb = src.GetPixel(x, y);
-                                        if (a != -1) vb[idst + cpix * a] = pb.A;
-                                        if (r != -1) vb[idst + cpix * r] = pb.R;
-                                        if (g != -1) vb[idst + cpix * g] = pb.G;
-                                        if (b != -1) vb[idst + cpix * b] = pb.B;
+                                        if (a != -1) vb[idst + cpix * a] = (byte)(alphaIndex > 0 ? pixelData[ix + alphaIndex] : 255);
+                                        if (r != -1) vb[idst + cpix * r] = pixelData[ix + redIndex];
+                                        if (g != -1) vb[idst + cpix * g] = pixelData[ix + greenIndex];
+                                        if (b != -1) vb[idst + cpix * b] = pixelData[ix + blueIndex];
                                     }
                                     else if (!needScale)
                                     {
-                                        var pb = src.GetPixel(x, y);
-                                        if (a != -1) vf[idst + cpix * a] = pb.A;
-                                        if (r != -1) vf[idst + cpix * r] = pb.R;
-                                        if (g != -1) vf[idst + cpix * g] = pb.G;
-                                        if (b != -1) vf[idst + cpix * b] = pb.B;
+                                        if (a != -1) vf[idst + cpix * a] = (byte)(alphaIndex > 0 ? pixelData[ix + alphaIndex] : 255);
+                                        if (r != -1) vf[idst + cpix * r] = pixelData[ix + redIndex];
+                                        if (g != -1) vf[idst + cpix * g] = pixelData[ix + greenIndex];
+                                        if (b != -1) vf[idst + cpix * b] = pixelData[ix + blueIndex];
                                     }
                                     else
                                     {
-                                        var pb = src.GetPixel(x, y);
-                                        if (a != -1) vf[idst + cpix * a] = (pb.A - offset) * scale;
-                                        if (r != -1) vf[idst + cpix * r] = (pb.R - offset) * scale;
-                                        if (g != -1) vf[idst + cpix * g] = (pb.G - offset) * scale;
-                                        if (b != -1) vf[idst + cpix * b] = (pb.B - offset) * scale;
+                                        if (a != -1) vf[idst + cpix * a] = ((byte)(alphaIndex > 0 ? pixelData[ix + alphaIndex] : 255) - offset) * scale;
+                                        if (r != -1) vf[idst + cpix * r] = (pixelData[ix + redIndex] - offset) * scale;
+                                        if (g != -1) vf[idst + cpix * g] = (pixelData[ix + greenIndex] - offset) * scale;
+                                        if (b != -1) vf[idst + cpix * b] = (pixelData[ix + blueIndex] - offset) * scale;
                                     }
+
+                                    ix += pixelByteCount;
                                 }
                             }
                         }
@@ -490,14 +486,15 @@ namespace Microsoft.ML.Transforms.Image
     /// |  |  |
     /// | -- | -- |
     /// | Does this estimator need to look at the data to train its parameters? | No |
-    /// | Input column data type | <xref:System.Drawing.Bitmap> |
+    /// | Input column data type | <xref:Microsoft.ML.Data.MLImage> |
     /// | Output column data type | Known-sized vector of <xref:System.Single> or <xref:System.Byte> |
     /// | Required NuGet in addition to Microsoft.ML | Microsoft.ML.ImageAnalytics |
+    /// | Exportable to ONNX | No |
     ///
     /// The resulting <xref:Microsoft.ML.Transforms.Image.ImagePixelExtractingTransformer> creates a new column, named as specified in the output column name parameters, and
-    /// converts image into vector of known size of floats or bytes. Size and data type depends on specified paramaters.
+    /// converts image into vector of known size of floats or bytes. Size and data type depends on specified parameters.
     /// For end-to-end image processing pipelines, and scenarios in your applications, see the
-    /// [examples](https://github.com/dotnet/machinelearning-samples/tree/master/samples/csharp/getting-started) in the machinelearning-samples github repository.
+    /// [examples](https://github.com/dotnet/machinelearning-samples/tree/main/samples/csharp/getting-started) in the machinelearning-samples github repository.
     ///
     /// Check the See Also section for links to usage examples.
     /// ]]>
@@ -601,7 +598,7 @@ namespace Microsoft.ML.Transforms.Image
             public readonly float ScaleImage;
 
             /// <summary>
-            /// Whether to interleave the pixels colors, meaning keep them in the <see cref="OrderOfExtraction"/> order, or leave them in the plannar form:
+            /// Whether to interleave the pixels colors, meaning keep them in the <see cref="OrderOfExtraction"/> order, or leave them in the planner form:
             /// all the values for one color for all pixels, then all the values for another color and so on.
             /// </summary>
             public readonly bool InterleavePixelColors;
@@ -649,7 +646,7 @@ namespace Microsoft.ML.Transforms.Image
             /// <param name="inputColumnName">Name of column to transform. If set to <see langword="null"/>, the value of the <paramref name="name"/> will be used as source.</param>
             /// <param name="colorsToExtract">What colors to extract.</param>
             /// <param name="orderOfExtraction">In which order to extract colors from pixel.</param>
-            /// <param name="interleavePixelColors">Whether to interleave the pixels, meaning keep them in the <paramref name="orderOfExtraction"/> order, or leave them in the plannar form:
+            /// <param name="interleavePixelColors">Whether to interleave the pixels, meaning keep them in the <paramref name="orderOfExtraction"/> order, or leave them in the planner form:
             /// all the values for one color for all pixels, then all the values for another color and so on.</param>
             /// <param name="offsetImage">Offset each pixel's color value by this amount. Applied to color value before <paramref name="scaleImage"/>.</param>
             /// <param name="scaleImage">Scale each pixel's color value by this amount. Applied to color value after <paramref name="offsetImage"/>.</param>
@@ -724,7 +721,7 @@ namespace Microsoft.ML.Transforms.Image
                 planes = (planes & 0x05) + ((planes >> 1) & 0x05);
                 planes = (planes & 0x03) + ((planes >> 2) & 0x03);
                 Planes = (byte)planes;
-                Contracts.Assert(0 < Planes & Planes <= 4);
+                Contracts.Assert(0 < Planes && Planes <= 4);
 
                 OutputAsFloatArray = ctx.Reader.ReadBoolByte();
                 OffsetImage = ctx.Reader.ReadFloat();
@@ -775,7 +772,7 @@ namespace Microsoft.ML.Transforms.Image
         /// <param name="inputColumnName">Name of the input column.</param>
         /// <param name="colorsToExtract">What colors to extract.</param>
         /// <param name="orderOfExtraction">In which order to extract colors from pixel.</param>
-        /// <param name="interleavePixelColors">Whether to interleave the pixels, meaning keep them in the <paramref name="orderOfExtraction"/> order, or leave them in the plannar form:
+        /// <param name="interleavePixelColors">Whether to interleave the pixels, meaning keep them in the <paramref name="orderOfExtraction"/> order, or leave them in the planner form:
         /// all the values for one color for all pixels, then all the values for another color and so on.</param>
         /// <param name="offsetImage">Offset each pixel's color value by this amount. Applied to color value before <paramref name="scaleImage"/>.</param>
         /// <param name="scaleImage">Scale each pixel's color value by this amount. Applied to color value after <paramref name="offsetImage"/>.</param>

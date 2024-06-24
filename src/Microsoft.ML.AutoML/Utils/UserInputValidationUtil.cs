@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.ML.AutoML.Utils;
 using Microsoft.ML.Data;
 
 namespace Microsoft.ML.AutoML
@@ -22,6 +23,7 @@ namespace Microsoft.ML.AutoML
         private const string SamplingKeyColumnPurposeName = "sampling key";
         private const string UserIdColumnPurposeName = "user ID";
         private const string ItemIdColumnPurposeName = "item ID";
+        private const string GroupIdColumnPurposeName = "group ID";
 
         public static void ValidateExperimentExecuteArgs(IDataView trainData, ColumnInformation columnInformation,
             IDataView validationData, TaskKind task)
@@ -56,6 +58,14 @@ namespace Microsoft.ML.AutoML
             }
         }
 
+        public static void ValidateSamplingKey(string samplingKeyColumnName, string groupIdColumnName, TaskKind task)
+        {
+            if (task == TaskKind.Ranking && samplingKeyColumnName != null && samplingKeyColumnName != groupIdColumnName)
+            {
+                throw new ArgumentException($"If provided, {nameof(samplingKeyColumnName)} must be the same as {nameof(groupIdColumnName)} for Ranking Experiments", samplingKeyColumnName);
+            }
+        }
+
         private static void ValidateTrainData(IDataView trainData, ColumnInformation columnInformation)
         {
             if (trainData == null)
@@ -77,7 +87,8 @@ namespace Microsoft.ML.AutoML
 
                 if ((column.Name != columnInformation.LabelColumnName &&
                     column.Name != columnInformation.UserIdColumnName &&
-                    column.Name != columnInformation.ItemIdColumnName)
+                    column.Name != columnInformation.ItemIdColumnName &&
+                    column.Name != columnInformation.GroupIdColumnName)
                     &&
                         column.Type.GetItemType() != BooleanDataViewType.Instance &&
                         column.Type.GetItemType() != NumberDataViewType.Single &&
@@ -91,7 +102,7 @@ namespace Microsoft.ML.AutoML
             }
         }
 
-        private static void ValidateColumnInformation(IDataView trainData, ColumnInformation columnInformation,  TaskKind task)
+        private static void ValidateColumnInformation(IDataView trainData, ColumnInformation columnInformation, TaskKind task)
         {
             ValidateColumnInformation(columnInformation);
             ValidateTrainDataColumn(trainData, columnInformation.LabelColumnName, LabelColumnPurposeName, GetAllowedLabelTypes(task));
@@ -99,6 +110,7 @@ namespace Microsoft.ML.AutoML
             ValidateTrainDataColumn(trainData, columnInformation.SamplingKeyColumnName, SamplingKeyColumnPurposeName);
             ValidateTrainDataColumn(trainData, columnInformation.UserIdColumnName, UserIdColumnPurposeName);
             ValidateTrainDataColumn(trainData, columnInformation.ItemIdColumnName, ItemIdColumnPurposeName);
+            ValidateTrainDataColumn(trainData, columnInformation.GroupIdColumnName, GroupIdColumnPurposeName);
             ValidateTrainDataColumns(trainData, columnInformation.CategoricalColumnNames, CategoricalColumnPurposeName,
                 new DataViewType[] { NumberDataViewType.Single, TextDataViewType.Instance });
             ValidateTrainDataColumns(trainData, columnInformation.NumericColumnNames, NumericColumnPurposeName,
@@ -183,21 +195,29 @@ namespace Microsoft.ML.AutoML
 
             const string schemaMismatchError = "Training data and validation data schemas do not match.";
 
-            if (trainData.Schema.Count != validationData.Schema.Count)
+            if (trainData.Schema.Count(c => !c.IsHidden) != validationData.Schema.Count(c => !c.IsHidden))
             {
                 throw new ArgumentException($"{schemaMismatchError} Train data has '{trainData.Schema.Count}' columns," +
                     $"and validation data has '{validationData.Schema.Count}' columns.", nameof(validationData));
             }
 
+            // Validate that every active column in the train data corresponds to an active column in the validation data.
+            // (Indirectly, since we asserted above that the train and validation data have the same number of active columns, this also
+            // ensures the reverse -- that every active column in the validation data corresponds to an active column in the train data.)
             foreach (var trainCol in trainData.Schema)
             {
+                if (trainCol.IsHidden)
+                {
+                    continue;
+                }
+
                 var validCol = validationData.Schema.GetColumnOrNull(trainCol.Name);
                 if (validCol == null)
                 {
-                    throw new ArgumentException($"{schemaMismatchError} Column '{trainCol.Name}' exsits in train data, but not in validation data.", nameof(validationData));
+                    throw new ArgumentException($"{schemaMismatchError} Column '{trainCol.Name}' exists in train data, but not in validation data.", nameof(validationData));
                 }
 
-                if (trainCol.Type != validCol.Value.Type)
+                if (trainCol.Type != validCol.Value.Type && !trainCol.Type.Equals(validCol.Value.Type))
                 {
                     throw new ArgumentException($"{schemaMismatchError} Column '{trainCol.Name}' is of type {trainCol.Type} in train data, and type " +
                         $"{validCol.Value.Type} in validation data.", nameof(validationData));
@@ -229,10 +249,18 @@ namespace Microsoft.ML.AutoML
             var nullableColumn = trainData.Schema.GetColumnOrNull(columnName);
             if (nullableColumn == null)
             {
-                throw new ArgumentException($"Provided {columnPurpose} column '{columnName}' not found in training data.");
+                var closestNamed = ClosestNamed(trainData, columnName, 7);
+
+                var exceptionMessage = $"Provided {columnPurpose} column '{columnName}' not found in training data.";
+                if (closestNamed != string.Empty)
+                {
+                    exceptionMessage += $" Did you mean '{closestNamed}'.";
+                }
+
+                throw new ArgumentException(exceptionMessage);
             }
 
-            if(allowedTypes == null)
+            if (allowedTypes == null)
             {
                 return;
             }
@@ -253,6 +281,23 @@ namespace Microsoft.ML.AutoML
             }
         }
 
+        private static string ClosestNamed(IDataView trainData, string columnName, int maxAllowableEditDistance = int.MaxValue)
+        {
+            var minEditDistance = int.MaxValue;
+            var closestNamed = string.Empty;
+            foreach (var column in trainData.Schema)
+            {
+                var editDistance = StringEditDistance.GetLevenshteinDistance(column.Name, columnName);
+                if (editDistance < minEditDistance)
+                {
+                    minEditDistance = editDistance;
+                    closestNamed = column.Name;
+                }
+            }
+
+            return minEditDistance <= maxAllowableEditDistance ? closestNamed : string.Empty;
+        }
+
         private static string FindFirstDuplicate(IEnumerable<string> values)
         {
             var groups = values.GroupBy(v => v);
@@ -271,6 +316,8 @@ namespace Microsoft.ML.AutoML
                     return null;
                 case TaskKind.Regression:
                 case TaskKind.Recommendation:
+                    return new DataViewType[] { NumberDataViewType.Single };
+                case TaskKind.Ranking:
                     return new DataViewType[] { NumberDataViewType.Single };
                 default:
                     throw new NotSupportedException($"Unsupported task type: {task}");

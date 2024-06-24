@@ -5,6 +5,7 @@
 using System.Linq;
 using Microsoft.ML.Data;
 using Microsoft.ML.Runtime;
+using Microsoft.ML.TestFramework.Attributes;
 using Microsoft.ML.Trainers;
 using Xunit;
 
@@ -12,7 +13,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
 {
     public partial class TrainerEstimators
     {
-        [Fact]
+        [NativeDependencyFact("MklImports")]
         public void TestEstimatorSymSgdClassificationTrainer()
         {
             (var pipe, var dataView) = GetBinaryClassificationPipeline();
@@ -26,7 +27,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             Done();
         }
 
-        [Fact]
+        [NativeDependencyFact("MklImports")]
         public void TestEstimatorSymSgdInitPredictor()
         {
             (var pipe, var dataView) = GetBinaryClassificationPipeline();

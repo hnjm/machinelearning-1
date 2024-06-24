@@ -128,7 +128,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
         }
 
         // Factory method for SignatureLoadModel.
-        private static IidSpikeDetector Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static IidSpikeDetector Create(IHostEnvironment env, ModelLoadContext ctx)
         {
             Contracts.CheckValue(env, nameof(env));
             env.CheckValue(ctx, nameof(ctx));
@@ -137,7 +137,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
             return new IidSpikeDetector(env, ctx);
         }
 
-        internal IidSpikeDetector(IHostEnvironment env, ModelLoadContext ctx)
+        private IidSpikeDetector(IHostEnvironment env, ModelLoadContext ctx)
             : base(env, ctx, LoaderSignature)
         {
             // *** Binary format ***
@@ -187,6 +187,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
     /// | Does this estimator need to look at the data to train its parameters? | No |
     /// | Input column data type | <xref:System.Single> |
     /// | Output column data type | 3-element vector of<xref:System.Double> |
+    /// | Exportable to ONNX | No |
     ///
     /// [!include[io](~/../docs/samples/docs/api-reference/time-series-props.md)]
     ///
@@ -198,7 +199,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
     /// ]]>
     /// </format>
     /// </remarks>
-    /// <seealso cref="Microsoft.ML.TimeSeriesCatalog.DetectIidSpike(Microsoft.ML.TransformsCatalog,System.String,System.String,System.Int32,System.Int32,Microsoft.ML.Transforms.TimeSeries.AnomalySide)" />
+    /// <seealso cref="Microsoft.ML.TimeSeriesCatalog.DetectIidSpike(Microsoft.ML.TransformsCatalog,System.String,System.String,System.Double,System.Int32,Microsoft.ML.Transforms.TimeSeries.AnomalySide)" />
     public sealed class IidSpikeEstimator : TrivialEstimator<IidSpikeDetector>
     {
         /// <summary>
@@ -211,7 +212,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
         /// <param name="pvalueHistoryLength">The size of the sliding window for computing the p-value.</param>
         /// <param name="inputColumnName">Name of column to transform. If set to <see langword="null"/>, the value of the <paramref name="outputColumnName"/> will be used as source.</param>
         /// <param name="side">The argument that determines whether to detect positive or negative anomalies, or both.</param>
-        internal IidSpikeEstimator(IHostEnvironment env, string outputColumnName, int confidence, int pvalueHistoryLength, string inputColumnName, AnomalySide side = AnomalySide.TwoSided)
+        internal IidSpikeEstimator(IHostEnvironment env, string outputColumnName, double confidence, int pvalueHistoryLength, string inputColumnName, AnomalySide side = AnomalySide.TwoSided)
             : base(Contracts.CheckRef(env, nameof(env)).Register(nameof(IidSpikeDetector)),
                 new IidSpikeDetector(env, new IidSpikeDetector.Options
                 {

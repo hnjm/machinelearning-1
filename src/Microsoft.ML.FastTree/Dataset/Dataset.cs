@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -420,12 +420,12 @@ namespace Microsoft.ML.Trainers.FastTree
         /// </summary>
         public sealed class DatasetSkeleton
         {
-            private short[] _ratings;
+            private readonly short[] _ratings;
             public readonly int[] Boundaries;
             public readonly ulong[] QueryIds;
             public readonly ulong[] DocIds;
             public double[][] MaxDcg;
-            private int[] _docToQuery;
+            private readonly int[] _docToQuery;
 
             public Dictionary<string, DatasetSkeletonQueryDocData> AuxiliaryData { get; set; }
 
@@ -552,7 +552,7 @@ namespace Microsoft.ML.Trainers.FastTree
             /// Writes a binary representation of this class to a byte buffer, at a given position.
             /// The position is incremented to the end of the representation
             /// </summary>
-            /// <param name="buffer">a byte array where the binary represenaion is written</param>
+            /// <param name="buffer">a byte array where the binary representation is written</param>
             /// <param name="position">the position in the byte array</param>
             public void ToByteArray(byte[] buffer, ref int position)
             {

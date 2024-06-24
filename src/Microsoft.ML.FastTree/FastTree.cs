@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -26,7 +26,7 @@ using Microsoft.ML.TreePredictor;
 using Newtonsoft.Json.Linq;
 
 // All of these reviews apply in general to fast tree and random forest implementations.
-//REVIEW: Decouple train method in Application.cs to have boosting and random forest logic seperate.
+//REVIEW: Decouple train method in Application.cs to have boosting and random forest logic separate.
 //REVIEW: Do we need to keep all the fast tree based testers?
 
 namespace Microsoft.ML.Trainers.FastTree
@@ -64,7 +64,7 @@ namespace Microsoft.ML.Trainers.FastTree
         private protected Dataset TrainSet;
         private protected Dataset ValidSet;
         /// <summary>
-        /// Data sets used to evaluate the prediction scores produced the trained model during the triaining process.
+        /// Data sets used to evaluate the prediction scores produced the trained model during the training process.
         /// </summary>
         private protected Dataset[] TestSets;
         private protected int[] FeatureMap;
@@ -214,7 +214,7 @@ namespace Microsoft.ML.Trainers.FastTree
         private protected void TrainCore(IChannel ch)
         {
             Contracts.CheckValue(ch, nameof(ch));
-            // REVIEW:Get rid of this lock then we completly remove all static classes from FastTree such as BlockingThreadPool.
+            // REVIEW:Get rid of this lock then we completely remove all static classes from FastTree such as BlockingThreadPool.
             lock (FastTreeShared.TrainLock)
             {
                 using (Timer.Time(TimerEvent.TotalInitialization))
@@ -223,7 +223,8 @@ namespace Microsoft.ML.Trainers.FastTree
                     PrintPrologInfo(ch);
 
                     Initialize(ch);
-                    PrintMemoryStats(ch);
+                    if (FastTreeTrainerOptions.MemoryStatistics)
+                        PrintMemoryStats(ch);
                 }
                 using (Timer.Time(TimerEvent.TotalTrain))
                     Train(ch);
@@ -297,7 +298,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
         /// <summary>
         /// A virtual method that is used to print header of test graph.
-        /// Appliations that need printing test graph are supposed to override
+        /// Applications that need printing test graph are supposed to override
         /// it to print specific test graph header.
         /// </summary>
         /// <returns> string representation of test graph header </returns>
@@ -330,8 +331,6 @@ namespace Microsoft.ML.Trainers.FastTree
                 ch.Info(GetTestGraphHeader());
             else
                 ch.Info(GetTestGraphLine());
-
-            return;
         }
 
         private protected virtual void Initialize(IChannel ch)
@@ -649,6 +648,8 @@ namespace Microsoft.ML.Trainers.FastTree
                 pch.SetHeader(new ProgressHeader("trees"), e => e.SetProgress(0, Ensemble.NumTrees, numTotalTrees));
                 while (Ensemble.NumTrees < numTotalTrees)
                 {
+                    ch.Trace($"numTotalTrees left: {numTotalTrees}");
+                    Host.CheckAlive();
                     using (Timer.Time(TimerEvent.Iteration))
                     {
 #if NO_STORE
@@ -689,6 +690,7 @@ namespace Microsoft.ML.Trainers.FastTree
                                     baggingProvider.GetCurrentOutOfBagPartition().Documents);
                         }
 
+                        Host.CheckAlive();
                         CustomizedTrainingIteration(tree);
 
                         using (Timer.Time(TimerEvent.Test))
@@ -740,6 +742,7 @@ namespace Microsoft.ML.Trainers.FastTree
                 }
             }
 
+            Host.CheckAlive();
             if (earlyStoppingRule != null)
             {
                 Contracts.Assert(numTotalTrees == 0 || bestIteration > 0);
@@ -752,8 +755,13 @@ namespace Microsoft.ML.Trainers.FastTree
                 bestIteration = GetBestIteration(ch);
             }
 
+            Host.CheckAlive();
             OptimizationAlgorithm.FinalizeLearning(bestIteration);
+
+            Host.CheckAlive();
             Ensemble.PopulateRawThresholds(TrainSet);
+
+            Host.CheckAlive();
             ParallelTraining.FinalizeTreeLearner();
         }
 
@@ -814,7 +822,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
         private protected ScoreTracker ConstructScoreTracker(Dataset set)
         {
-            // If not found contruct one
+            // If not found construct one
             ScoreTracker st = null;
             if (set == TrainSet)
                 st = OptimizationAlgorithm.GetScoreTracker("train", TrainSet, InitTrainScores);
@@ -978,25 +986,6 @@ namespace Microsoft.ML.Trainers.FastTree
             }
             return conv;
         }
-
-#if !CORECLR
-        private protected void GetFeatureIniContent(RoleMappedData data, ref VBuffer<ReadOnlyMemory<char>> content)
-        {
-            // The existing implementations will have verified this by the time this utility
-            // function is called.
-            Host.AssertValue(data);
-            var feat = data.Schema.Feature;
-            Host.AssertValue(feat);
-            Host.Assert(feat.Type.ValueCount > 0);
-
-            var sch = data.Schema.Schema;
-            var type = sch.GetMetadataTypeOrNull(BingBinLoader.IniContentMetadataKind, feat.Index);
-            if (type == null || type.VectorSize != feat.Type.ValueCount || !type.IsVector || !type.ItemType.IsText)
-                content = new VBuffer<ReadOnlyMemory<char>>(feat.Type.ValueCount, 0, content.Values, content.Indices);
-            else
-                sch.GetMetadata(BingBinLoader.IniContentMetadataKind, feat.Index, ref content);
-        }
-#endif
 
         public abstract Dataset GetDataset();
 
@@ -1165,7 +1154,7 @@ namespace Microsoft.ML.Trainers.FastTree
 #endif
                 double[] bub = BinUpperBounds[fi];
                 ch.Assert(bub.Length == 2);
-                //REVIEW: leaving out check for the value to reduced memory consuption and going with
+                //REVIEW: leaving out check for the value to reduced memory consumption and going with
                 //leap of faith based on what the user told.
                 binnedValues[i] = hotFeatureStarts[subfeature] + 1;
                 hotCount++;
@@ -1308,7 +1297,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
             private ValueMapper<VBuffer<T1>, VBuffer<T2>> GetCopier<T1, T2>(DataViewType itemType1, DataViewType itemType2)
             {
-                var conv = Conversions.Instance.GetStandardConversion<T1, T2>(itemType1, itemType2, out bool identity);
+                var conv = Conversions.DefaultInstance.GetStandardConversion<T1, T2>(itemType1, itemType2, out bool identity);
                 if (identity)
                 {
                     ValueMapper<VBuffer<T1>, VBuffer<T1>> identityResult =
@@ -1387,7 +1376,7 @@ namespace Microsoft.ML.Trainers.FastTree
                         BinFinder finder = new BinFinder();
                         FeaturesToContentMap fmap = new FeaturesToContentMap(examples.Schema);
 
-                        var hasMissingPred = Conversions.Instance.GetHasMissingPredicate<float>(((ITransposeDataView)trans).GetSlotType(featIdx));
+                        var hasMissingPred = Conversions.DefaultInstance.GetHasMissingPredicate<float>(((ITransposeDataView)trans).GetSlotType(featIdx));
                         // There is no good mechanism to filter out rows with missing feature values on transposed data.
                         // So, we instead perform one featurization pass which, if successful, will remain one pass but,
                         // if we ever encounter missing values will become a "detect missing features" pass, which will
@@ -1785,7 +1774,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
                 MakeBoundariesAndCheckLabels(out _numMissingInstances, out long numInstances);
                 if (numInstances > Utils.ArrayMaxSize)
-                    throw Host.ExceptParam(nameof(data), "Input data had {0} rows, but can only accomodate {1}", numInstances, Utils.ArrayMaxSize);
+                    throw Host.ExceptParam(nameof(data), "Input data had {0} rows, but can only accommodate {1}", numInstances, Utils.ArrayMaxSize);
                 _numExamples = (int)numInstances;
             }
 
@@ -2637,7 +2626,7 @@ namespace Microsoft.ML.Trainers.FastTree
 #if DEBUG
                 // Holds for each feature the row index that it was previously accessed on.
                 // Purely for validation purposes.
-                private int[] _lastRow;
+                private readonly int[] _lastRow;
 #endif
 
                 /// <summary>
@@ -3046,9 +3035,13 @@ namespace Microsoft.ML.Trainers.FastTree
             Max
         }
 
-        bool ISingleCanSaveOnnx.SaveAsOnnx(OnnxContext ctx, string[] outputNames, string featureColumn)
+        private protected virtual bool SaveAsOnnx(OnnxContext ctx, string[] outputNames, string featureColumn)
         {
             Host.CheckValue(ctx, nameof(ctx));
+            Host.Check(Utils.Size(outputNames) >= 1);
+
+            const int minimumOpSetVersion = 9;
+            ctx.CheckOpSetVersion(minimumOpSetVersion, "TreeEnsembleModelParameters");
 
             //Nodes.
             var nodesTreeids = new List<long>();
@@ -3111,7 +3104,8 @@ namespace Microsoft.ML.Trainers.FastTree
             }
 
             string opType = "TreeEnsembleRegressor";
-            var node = ctx.CreateNode(opType, new[] { featureColumn }, outputNames, ctx.GetNodeName(opType));
+            string scoreVarName = (Utils.Size(outputNames) >= 2) ? outputNames[1] : outputNames[0]; // Get Score from PredictedLabel and/or Score columns
+            var node = ctx.CreateNode(opType, new[] { featureColumn }, new[] { scoreVarName }, ctx.GetNodeName(opType));
 
             node.AddAttribute("post_transform", PostTransform.None.GetDescription());
             node.AddAttribute("n_targets", 1);
@@ -3131,6 +3125,10 @@ namespace Microsoft.ML.Trainers.FastTree
             node.AddAttribute("target_weights", classWeights);
 
             return true;
+        }
+        bool ISingleCanSaveOnnx.SaveAsOnnx(OnnxContext ctx, string[] outputNames, string featureColumn)
+        {
+            return SaveAsOnnx(ctx, outputNames, featureColumn);
         }
 
         void ICanSaveSummary.SaveSummary(TextWriter writer, RoleMappedSchema schema)

@@ -1,16 +1,25 @@
-﻿using System.Linq;
+﻿// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
+
+using System.Linq;
 using Microsoft.ML.Data;
+using Microsoft.ML.TestFramework;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace Microsoft.ML.AutoML.Test
 {
-    public class PurposeInferenceTests
+    public class PurposeInferenceTests : BaseTestClass
     {
+        public PurposeInferenceTests(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         public void PurposeInferenceHiddenColumnsTest()
         {
-            var context = new MLContext();
+            var context = new MLContext(1);
 
             // build basic data view
             var schemaBuilder = new DataViewSchema.Builder();

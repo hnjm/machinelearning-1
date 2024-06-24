@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -74,7 +74,8 @@ namespace Microsoft.ML.Trainers.FastTree
         /// </summary>
         private protected bool LowerIsBetter { get; }
 
-        private protected float BestScore {
+        private protected float BestScore
+        {
             get { return _bestScore; }
             set
             {
@@ -145,7 +146,7 @@ namespace Microsoft.ML.Trainers.FastTree
             Threshold = threshold;
         }
 
-        // Used in command line tool to construct lodable class.
+        // Used in command line tool to construct loadable class.
         private TolerantEarlyStoppingRule(Options options, bool lowerIsBetter)
             : base(lowerIsBetter)
         {
@@ -304,7 +305,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
         /// <summary>
         /// Create a rule which may terminate the training process in case of loss of generality. The loss of generality means
-        /// the specified score on validation start increaseing.
+        /// the specified score on validation start increasing.
         /// </summary>
         /// <param name="threshold">The maximum gap (in percentage such as 0.01 for 1% and 0.5 for 50%) between the (current) validation
         /// score and its best historical value.</param>
@@ -315,7 +316,7 @@ namespace Microsoft.ML.Trainers.FastTree
             Threshold = threshold;
         }
 
-        // Used in command line tool to construct lodable class.
+        // Used in command line tool to construct loadable class.
         private GeneralityLossRule(Options options, bool lowerIsBetter)
             : base(lowerIsBetter)
         {
@@ -339,7 +340,7 @@ namespace Microsoft.ML.Trainers.FastTree
         }
 
         internal override IEarlyStoppingCriterionFactory BuildFactory() => new Options() { Threshold = Threshold };
-}
+    }
 
     /// <summary>
     /// Low Progress (LP).
@@ -370,7 +371,7 @@ namespace Microsoft.ML.Trainers.FastTree
         {
         }
 
-        // Used in command line tool to construct lodable class.
+        // Used in command line tool to construct loadable class.
         private LowProgressRule(Options options, bool lowerIsBetter)
             : base(lowerIsBetter, options.Threshold, options.WindowSize)
         {
@@ -400,7 +401,7 @@ namespace Microsoft.ML.Trainers.FastTree
         }
 
         internal override IEarlyStoppingCriterionFactory BuildFactory() => new Options() { Threshold = Threshold, WindowSize = WindowSize };
-}
+    }
 
     /// <summary>
     /// Generality to Progress Ratio (PQ).
@@ -427,7 +428,7 @@ namespace Microsoft.ML.Trainers.FastTree
         {
         }
 
-        // Used in command line tool to construct lodable class.
+        // Used in command line tool to construct loadable class.
         private GeneralityToProgressRatioRule(Options options, bool lowerIsBetter)
             : base(lowerIsBetter, options.Threshold, options.WindowSize)
         {

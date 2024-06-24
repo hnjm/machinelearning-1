@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -55,6 +55,7 @@ namespace Microsoft.ML.Trainers.FastTree
     /// | Is normalization required? | No |
     /// | Is caching required? | No |
     /// | Required NuGet in addition to Microsoft.ML | Microsoft.ML.FastTree |
+    /// | Exportable to ONNX | No |
     ///
     /// [!include[algorithm](~/../docs/samples/docs/api-reference/algo-details-fasttree.md)]
     /// ]]>
@@ -87,7 +88,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// <param name="labelColumnName">The name of the label column.</param>
         /// <param name="featureColumnName">The name of the feature column.</param>
         /// <param name="rowGroupColumnName">The name for the column containing the group ID. </param>
-        /// <param name="exampleWeightColumnName">The name for the column containing the examle weight.</param>
+        /// <param name="exampleWeightColumnName">The name for the column containing the example weight.</param>
         /// <param name="numberOfLeaves">The max number of leaves in each regression tree.</param>
         /// <param name="numberOfTrees">Total number of decision trees to create in the ensemble.</param>
         /// <param name="minimumExampleCountPerLeaf">The minimal number of examples allowed in a leaf of a regression tree, out of the subsampled data.</param>
@@ -241,7 +242,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
             if (FastTreeTrainerOptions.PrintTestGraph)
             {
-                // If FirstTestHistory is null (which means the tests were not intialized due to /tf==infinity)
+                // If FirstTestHistory is null (which means the tests were not initialized due to /tf==infinity)
                 // We need initialize first set for graph printing
                 // Adding to a tests would result in printing the results after final iteration
                 if (_firstTestSetHistory == null)
@@ -265,7 +266,7 @@ namespace Microsoft.ML.Trainers.FastTree
             {
                 if (!FastTreeTrainerOptions.UseTolerantPruning)
                 {
-                    //use simple eraly stopping condition
+                    //use simple early stopping condition
                     PruningTest = new TestHistory(ValidTest, 0);
                 }
                 else
@@ -362,7 +363,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
             // We only print non-zero train&valid graph if earlyStoppingTruncation!=0
             // In case /es is not set, we print 0 for train and valid graph NDCG
-            // Let's keeping this behaviour for backward compatibility with previous FR version
+            // Let's keeping this behavior for backward compatibility with previous FR version
             // Ideally /graphtv should enforce non-zero /es in the commandline validation
             if (_specialTrainSetTest != null)
             {
@@ -384,7 +385,7 @@ namespace Microsoft.ML.Trainers.FastTree
             base.Train(ch);
             // Print final last iteration.
             // Note that trainNDCG printed in graph will be from copy of a value from previous iteration
-            // and will diffre slightly from the proper final value computed by FullTest.
+            // and will differ slightly from the proper final value computed by FullTest.
             // We cannot compute the final NDCG here due to the fact we use FastNDCGTestForTrainSet computing NDCG based on label sort saved during gradient computation (and we don;t have gradients for n+1 iteration)
             // Keeping it in sync with original FR code
             PrintTestGraph(ch);
@@ -506,19 +507,19 @@ namespace Microsoft.ML.Trainers.FastTree
             private readonly double[] _discount;
             private readonly int[] _oneTwoThree;
 
-            private int[][] _labelCounts;
+            private readonly int[][] _labelCounts;
 
             // reusable memory, technical stuff
-            private int[][] _permutationBuffers;
-            private DcgPermutationComparer[] _comparers;
+            private readonly int[][] _permutationBuffers;
+            private readonly DcgPermutationComparer[] _comparers;
 
             //gains
-            private double[] _gain;
+            private readonly double[] _gain;
             private double[] _gainLabels;
 
             // parameters
-            private int _maxDcgTruncationLevel;
-            private bool _useDcg;
+            private readonly int _maxDcgTruncationLevel;
+            private readonly bool _useDcg;
             // A lookup table for the sigmoid used in the lambda calculation
             // Note: Is built for a specific sigmoid parameter, so assumes this will be constant throughout computation
             private double[] _sigmoidTable;
@@ -532,38 +533,32 @@ namespace Microsoft.ML.Trainers.FastTree
 
             // Secondary gains, currently not used in any way.
 #pragma warning disable 0649
-            private double _secondaryMetricShare;
-            private double[] _secondaryInverseMaxDcgt;
-            private double[] _secondaryGains;
+            private readonly double _secondaryMetricShare;
+            private readonly double[] _secondaryInverseMaxDcgt;
+            private readonly double[] _secondaryGains;
 #pragma warning restore 0649
 
             // Baseline risk.
             private static int _iteration = 0; // This is a static class global member which keeps track of the iterations.
-            private double[] _baselineDcg;
-            private double[] _baselineAlpha;
             private double _baselineAlphaCurrent;
-            // Current iteration risk statistics.
-            private double _idealNextRisk;
-            private double _currentRisk;
-            private double _countRisk;
 
             // These reusable buffers are used for
             // 1. preprocessing the scores for continuous cost function
             // 2. shifted NDCG
             // 3. max DCG per query
-            private double[] _scoresCopy;
-            private short[] _labelsCopy;
-            private short[] _groupIdToTopLabel;
+            private readonly double[] _scoresCopy;
+            private readonly short[] _labelsCopy;
+            private readonly short[] _groupIdToTopLabel;
 
             // parameters
-            private double _sigmoidParam;
-            private char _costFunctionParam;
-            private bool _filterZeroLambdas;
+            private readonly double _sigmoidParam;
+            private readonly char _costFunctionParam;
+            private readonly bool _filterZeroLambdas;
 
-            private bool _distanceWeight2;
-            private bool _normalizeQueryLambdas;
-            private bool _useShiftedNdcg;
-            private IParallelTraining _parallelTraining;
+            private readonly bool _distanceWeight2;
+            private readonly bool _normalizeQueryLambdas;
+            private readonly bool _useShiftedNdcg;
+            private readonly IParallelTraining _parallelTraining;
 
             // Used for training NDCG calculation
             // Keeps track of labels of top 3 documents per query
@@ -643,7 +638,6 @@ namespace Microsoft.ML.Trainers.FastTree
 #if OLD_DATALOAD
             SetupSecondaryGains(cmd);
 #endif
-                SetupBaselineRisk(options);
                 _parallelTraining = parallelTraining;
             }
 
@@ -666,46 +660,6 @@ namespace Microsoft.ML.Trainers.FastTree
             }
         }
 #endif
-
-            private void SetupBaselineRisk(Options options)
-            {
-                double[] scores = Dataset.Skeleton.GetData<double>("BaselineScores");
-                if (scores == null)
-                    return;
-
-                // Calculate the DCG with the discounts as they exist in the objective function (this
-                // can differ versus the actual DCG discount)
-                DcgCalculator calc = new DcgCalculator(Dataset.MaxDocsPerQuery, options.SortingAlgorithm);
-                _baselineDcg = calc.DcgFromScores(Dataset, scores, _discount);
-
-                IniFileParserInterface ffi = IniFileParserInterface.CreateFromFreeform(string.IsNullOrEmpty(options.BaselineAlphaRisk) ? "0" : options.BaselineAlphaRisk);
-                IniFileParserInterface.FeatureEvaluator ffe = ffi.GetFeatureEvaluators()[0];
-                IniFileParserInterface.FeatureMap ffmap = ffi.GetFeatureMap();
-                string[] ffnames = Enumerable.Range(0, ffmap.RawFeatureCount)
-                    .Select(x => ffmap.GetRawFeatureName(x)).ToArray();
-                string[] badffnames = ffnames.Where(x => x != "I" && x != "T").ToArray();
-                if (badffnames.Length > 0)
-                {
-                    // The freeform should contain only I and T, that is, the iteration and total iterations.
-                    throw Contracts.Except(
-                        "alpha freeform must use only I (iterations) and T (total iterations), contains {0} unrecognized names {1}",
-                        badffnames.Length, string.Join(", ", badffnames));
-                }
-
-                uint[] vals = new uint[ffmap.RawFeatureCount];
-                int iInd = Array.IndexOf(ffnames, "I");
-                int tInd = Array.IndexOf(ffnames, "T");
-                int totalTrees = options.NumberOfTrees;
-                if (tInd >= 0)
-                    vals[tInd] = (uint)totalTrees;
-                _baselineAlpha = Enumerable.Range(0, totalTrees).Select(i =>
-                {
-                    if (iInd >= 0)
-                        vals[iInd] = (uint)i;
-                    return ffe.Evaluate(vals);
-                }).ToArray();
-            }
-
             private void FillSigmoidTable(double sigmoidParam)
             {
                 // minScore is such that 2*sigmoidParam*score is < expAsymptote if score < minScore
@@ -759,7 +713,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
                     if (_groupIdToTopLabel[groupIndex] != -1)
                     {
-                        // this is the second+ occurance of a result
+                        // this is the second+ occurrence of a result
                         // of the same duplicate group, so:
                         // - disconsider when applying the cost function
                         //
@@ -781,17 +735,8 @@ namespace Microsoft.ML.Trainers.FastTree
 
             public override double[] GetGradient(IChannel ch, double[] scores)
             {
-                // Set the risk and alpha accumulators appropriately.
-                _countRisk = _currentRisk = _idealNextRisk = 0.0;
-                _baselineAlphaCurrent = _baselineAlpha == null ? 0.0 : _baselineAlpha[_iteration];
+                _baselineAlphaCurrent = 0.0;
                 double[] grads = base.GetGradient(ch, scores);
-                if (_baselineDcg != null)
-                {
-                    ch.Info(
-                        "Risk alpha {0:0.000}, total {1:0.000}, avg {2:0.000}, count {3}, next ideal {4:0.000}",
-                        _baselineAlphaCurrent, _currentRisk, _currentRisk / Math.Max(1.0, _countRisk),
-                        _countRisk, _idealNextRisk);
-                }
                 _iteration++;
                 return grads;
             }
@@ -847,154 +792,122 @@ namespace Microsoft.ML.Trainers.FastTree
                     {
                         // calculates the permutation that orders "scores" in descending order, without modifying "scores"
                         Array.Copy(_oneTwoThree, permutation, numDocuments);
-#if USE_FASTTREENATIVE
 
-                        PermutationSort(permutation, scoresToUse, labels, numDocuments, begin);
-                        // Get how far about baseline our current
-                        double baselineDcgGap = 0.0;
-                        if (_baselineDcg != null)
-                        {
-                            baselineDcgGap = _baselineDcg[query];
-                            for (int d = 0; d < numDocuments; ++d)
-                            {
-                                baselineDcgGap -= _gainLabels[pPermutation[d] + begin] * _discount[d];
-                            }
-                            if (baselineDcgGap > 1e-7)
-                            {
-                                Utils.InterlockedAdd(ref _currentRisk, baselineDcgGap);
-                                Utils.InterlockedAdd(ref _countRisk, 1.0);
-                            }
-                        }
-                        //baselineDCGGap = ((new Random(query)).NextDouble() * 2 - 1)/inverseMaxDCG; // THIS IS EVIL CODE REMOVE LATER
-                        // Keep track of top 3 labels for later use
-                        GetTopQueryLabels(query, permutation, true);
-
-                        if (_useShiftedNdcg)
-                        {
-                            // Set non-best (rank-wise) duplicates to be ignored. Set Score to MinValue, Label to 0
-                            IgnoreNonBestDuplicates(labels, scoresToUse, permutation, Dataset.DupeIds, begin, numDocuments);
-                        }
-
-                        int numActualResults = numDocuments;
-
-                        // If the const function is ContinuousWeightedRanknet, update output scores
-                        if (_costFunctionParam == 'c')
-                        {
-                            for (int i = begin; i < begin + numDocuments; ++i)
-                            {
-                                if (pScores[i] == double.MinValue)
-                                {
-                                    numActualResults--;
-                                }
-                                else
-                                {
-                                    pScores[i] = pScores[i] * (1.0 - pLabels[i] * 1.0 / (20.0 * Dataset.DatasetSkeleton.LabelGainMap.Length));
-                                }
-                            }
-                        }
-
-                        // Continous cost function and shifted NDCG require a re-sort and recomputation of maxDCG
-                        // (Change of scores in the former and scores and labels in the latter)
-                        if (!_useDcg && (_costFunctionParam == 'c' || _useShiftedNdcg))
+                        if (IntArray.UseFastTreeNative)
                         {
                             PermutationSort(permutation, scoresToUse, labels, numDocuments, begin);
-                            inverseMaxDcg = 1.0 / DcgCalculator.MaxDcgQuery(labels, begin, numDocuments, numDocuments, _labelCounts[query]);
-                        }
-                        // A constant related to secondary labels, which does not exist in the current codebase.
-                        const bool secondaryIsolabelExclusive = false;
-                        GetDerivatives(numDocuments, begin, pPermutation, pLabels,
-                                pScores, pLambdas, pWeights, pDiscount,
-                                inverseMaxDcg, pGainLabels,
-                                _secondaryMetricShare, secondaryIsolabelExclusive, secondaryInverseMaxDcg, pSecondaryGains,
-                                pSigmoidTable, _minScore, _maxScore, _sigmoidTable.Length, _scoreToSigmoidTableFactor,
-                                _costFunctionParam, _distanceWeight2, numActualResults, &lambdaSum, double.MinValue,
-                                _baselineAlphaCurrent, baselineDcgGap);
+                            // Get how far about baseline our current
+                            double baselineDcgGap = 0.0;
+                            //baselineDCGGap = ((new Random(query)).NextDouble() * 2 - 1)/inverseMaxDCG; // THIS IS EVIL CODE REMOVE LATER
+                            // Keep track of top 3 labels for later use
+                            GetTopQueryLabels(query, permutation, true);
 
-                        // For computing the "ideal" case of the DCGs.
-                        if (_baselineDcg != null)
-                        {
-                            if (scoresToUse == Scores)
-                                Array.Copy(Scores, begin, _scoresCopy, begin, numDocuments);
-                            for (int i = begin; i < begin + numDocuments; ++i)
+                            if (_useShiftedNdcg)
                             {
-                                _scoresCopy[i] += Gradient[i] / Weights[i];
+                                // Set non-best (rank-wise) duplicates to be ignored. Set Score to MinValue, Label to 0
+                                IgnoreNonBestDuplicates(labels, scoresToUse, permutation, Dataset.DupeIds, begin, numDocuments);
                             }
-                            Array.Copy(_oneTwoThree, permutation, numDocuments);
-                            PermutationSort(permutation, _scoresCopy, labels, numDocuments, begin);
-                            double idealNextRisk = _baselineDcg[query];
-                            for (int d = 0; d < numDocuments; ++d)
+
+                            int numActualResults = numDocuments;
+
+                            // If the const function is ContinuousWeightedRanknet, update output scores
+                            if (_costFunctionParam == 'c')
                             {
-                                idealNextRisk -= _gainLabels[pPermutation[d] + begin] * _discount[d];
+                                for (int i = begin; i < begin + numDocuments; ++i)
+                                {
+                                    if (pScores[i] == double.MinValue)
+                                    {
+                                        numActualResults--;
+                                    }
+                                    else
+                                    {
+                                        pScores[i] = pScores[i] * (1.0 - pLabels[i] * 1.0 / (20.0 * Dataset.DatasetSkeleton.LabelGainMap.Length));
+                                    }
+                                }
                             }
-                            if (idealNextRisk > 1e-7)
+
+                            // Continuous cost function and shifted NDCG require a re-sort and recomputation of maxDCG
+                            // (Change of scores in the former and scores and labels in the latter)
+                            if (!_useDcg && (_costFunctionParam == 'c' || _useShiftedNdcg))
                             {
-                                Utils.InterlockedAdd(ref _idealNextRisk, idealNextRisk);
+                                PermutationSort(permutation, scoresToUse, labels, numDocuments, begin);
+                                inverseMaxDcg = 1.0 / DcgCalculator.MaxDcgQuery(labels, begin, numDocuments, numDocuments, _labelCounts[query]);
                             }
+                            // A constant related to secondary labels, which does not exist in the current codebase.
+                            const bool secondaryIsolabelExclusive = false;
+                            GetDerivatives(numDocuments, begin, pPermutation, pLabels,
+                                    pScores, pLambdas, pWeights, pDiscount,
+                                    inverseMaxDcg, pGainLabels,
+                                    _secondaryMetricShare, secondaryIsolabelExclusive, secondaryInverseMaxDcg, pSecondaryGains,
+                                    pSigmoidTable, _minScore, _maxScore, _sigmoidTable.Length, _scoreToSigmoidTableFactor,
+                                    _costFunctionParam, _distanceWeight2, numActualResults, &lambdaSum, double.MinValue,
+                                    _baselineAlphaCurrent, baselineDcgGap);
                         }
-
-#else
-                        if (_useShiftedNdcg || _costFunctionParam == 'c' || _distanceWeight2 || _normalizeQueryLambdas)
+                        else
                         {
-                            throw new Exception("Shifted NDCG / ContinuousWeightedRanknet / distanceWeight2 / normalized lambdas are only supported by unmanaged code");
-                        }
-
-                        var comparer = _comparers[threadIndex];
-                        comparer.Scores = scoresToUse;
-                        comparer.Labels = labels;
-                        comparer.ScoresOffset = begin;
-                        comparer.LabelsOffset = begin;
-                        Array.Sort(permutation, 0, numDocuments, comparer);
-
-                        // go over all pairs
-                        double scoreHighMinusLow;
-                        double lambdaP;
-                        double weightP;
-                        double deltaNdcgP;
-                        for (int i = 0; i < numDocuments; ++i)
-                        {
-                            int high = begin + pPermutation[i];
-                            if (pLabels[high] == 0)
-                                continue;
-                            double deltaLambdasHigh = 0;
-                            double deltaWeightsHigh = 0;
-
-                            for (int j = 0; j < numDocuments; ++j)
+                            if (_useShiftedNdcg || _costFunctionParam == 'c' || _distanceWeight2 || _normalizeQueryLambdas)
                             {
-                                // only consider pairs with different labels, where "high" has a higher label than "low"
-                                if (i == j)
+                                throw new Exception("Shifted NDCG / ContinuousWeightedRanknet / distanceWeight2 / normalized lambdas are only supported by unmanaged code");
+                            }
+
+                            var comparer = _comparers[threadIndex];
+                            comparer.Scores = scoresToUse;
+                            comparer.Labels = labels;
+                            comparer.ScoresOffset = begin;
+                            comparer.LabelsOffset = begin;
+                            Array.Sort(permutation, 0, numDocuments, comparer);
+
+                            // go over all pairs
+                            double scoreHighMinusLow;
+                            double lambdaP;
+                            double weightP;
+                            double deltaNdcgP;
+                            for (int i = 0; i < numDocuments; ++i)
+                            {
+                                int high = begin + pPermutation[i];
+                                if (pLabels[high] == 0)
                                     continue;
-                                int low = begin + pPermutation[j];
-                                if (pLabels[high] <= pLabels[low])
-                                    continue;
+                                double deltaLambdasHigh = 0;
+                                double deltaWeightsHigh = 0;
 
-                                // calculate the lambdaP for this pair
-                                scoreHighMinusLow = pScores[high] - pScores[low];
+                                for (int j = 0; j < numDocuments; ++j)
+                                {
+                                    // only consider pairs with different labels, where "high" has a higher label than "low"
+                                    if (i == j)
+                                        continue;
+                                    int low = begin + pPermutation[j];
+                                    if (pLabels[high] <= pLabels[low])
+                                        continue;
 
-                                if (scoreHighMinusLow <= _minScore)
-                                    lambdaP = _minSigmoid;
-                                else if (scoreHighMinusLow >= _maxScore)
-                                    lambdaP = _maxSigmoid;
-                                else
-                                    lambdaP = _sigmoidTable[(int)((scoreHighMinusLow - _minScore) * _scoreToSigmoidTableFactor)];
+                                    // calculate the lambdaP for this pair
+                                    scoreHighMinusLow = pScores[high] - pScores[low];
 
-                                weightP = lambdaP * (2.0 - lambdaP);
+                                    if (scoreHighMinusLow <= _minScore)
+                                        lambdaP = _minSigmoid;
+                                    else if (scoreHighMinusLow >= _maxScore)
+                                        lambdaP = _maxSigmoid;
+                                    else
+                                        lambdaP = _sigmoidTable[(int)((scoreHighMinusLow - _minScore) * _scoreToSigmoidTableFactor)];
 
-                                // calculate the deltaNDCGP for this pair
-                                deltaNdcgP =
-                                    (pGain[pLabels[high]] - pGain[pLabels[low]]) *
-                                    Math.Abs((pDiscount[i] - pDiscount[j])) *
-                                    inverseMaxDcg;
+                                    weightP = lambdaP * (2.0 - lambdaP);
 
-                                // update lambdas and weights
-                                deltaLambdasHigh += lambdaP * deltaNdcgP;
-                                pLambdas[low] -= lambdaP * deltaNdcgP;
-                                deltaWeightsHigh += weightP * deltaNdcgP;
-                                pWeights[low] += weightP * deltaNdcgP;
+                                    // calculate the deltaNDCGP for this pair
+                                    deltaNdcgP =
+                                        (pGain[pLabels[high]] - pGain[pLabels[low]]) *
+                                        Math.Abs((pDiscount[i] - pDiscount[j])) *
+                                        inverseMaxDcg;
+
+                                    // update lambdas and weights
+                                    deltaLambdasHigh += lambdaP * deltaNdcgP;
+                                    pLambdas[low] -= lambdaP * deltaNdcgP;
+                                    deltaWeightsHigh += weightP * deltaNdcgP;
+                                    pWeights[low] += weightP * deltaNdcgP;
+                                }
+                                pLambdas[high] += deltaLambdasHigh;
+                                pWeights[high] += deltaWeightsHigh;
                             }
-                            pLambdas[high] += deltaLambdasHigh;
-                            pWeights[high] += deltaWeightsHigh;
                         }
-#endif
+
                         if (_normalizeQueryLambdas)
                         {
                             if (lambdaSum > 0)
@@ -1040,23 +953,6 @@ namespace Microsoft.ML.Trainers.FastTree
                 {
                     for (int d = 0; d < Dataset.MaxDocsPerQuery; ++d)
                         _discount[d] = 1.0 / Math.Log(2.0 + d);
-                }
-                else
-                {
-                    IniFileParserInterface inip = IniFileParserInterface.CreateFromFreeform(positionDiscountFreeform);
-                    if (inip.GetFeatureMap().RawFeatureCount != 1)
-                    {
-                        throw Contracts.Except(
-                            "The position discount freeform requires exactly 1 variable, {0} encountered",
-                            inip.GetFeatureMap().RawFeatureCount);
-                    }
-                    var freeformEval = inip.GetFeatureEvaluators()[0];
-                    uint[] p = new uint[1];
-                    for (int d = 0; d < Dataset.MaxDocsPerQuery; ++d)
-                    {
-                        p[0] = (uint)d;
-                        _discount[d] = freeformEval.Evaluate(p);
-                    }
                 }
             }
 
@@ -1170,7 +1066,7 @@ namespace Microsoft.ML.Trainers.FastTree
             ctx.SetVersionInfo(GetVersionInfo());
         }
 
-        private static FastTreeRankingModelParameters Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static FastTreeRankingModelParameters Create(IHostEnvironment env, ModelLoadContext ctx)
         {
             return new FastTreeRankingModelParameters(env, ctx);
         }

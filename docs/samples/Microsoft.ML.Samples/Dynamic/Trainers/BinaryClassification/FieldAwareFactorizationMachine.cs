@@ -39,7 +39,7 @@ namespace Samples.Dynamic.Trainers.BinaryClassification
                 new[] {nameof(DataPoint.Field0), nameof(DataPoint.Field1),
                 nameof(DataPoint.Field2) },
                 // Specify binary label's column name.
-                nameof(DataPoint.Label) );
+                nameof(DataPoint.Label));
 
             // Train the model.
             var model = pipeline.Fit(trainingData);
@@ -81,7 +81,7 @@ namespace Samples.Dynamic.Trainers.BinaryClassification
                 .CreatePredictionEngine<DataPoint, Result>(model);
 
             // Make some predictions.
-            foreach(var dataPoint in data.Take(5))
+            foreach (var dataPoint in data.Take(5))
             {
                 var result = engine.Predict(dataPoint);
                 Console.WriteLine($"Actual label: {dataPoint.Label}, "
@@ -93,11 +93,11 @@ namespace Samples.Dynamic.Trainers.BinaryClassification
             }
 
             // Expected output:
-            //   Actual label: True, predicted label: True, score of being positive class: 1.115094, and probability of beling positive class: 0.7530775.
-            //   Actual label: False, predicted label: False, score of being positive class: -3.478797, and probability of beling positive class: 0.02992158.
-            //   Actual label: True, predicted label: True, score of being positive class: 3.191896, and probability of beling positive class: 0.9605282.
-            //   Actual label: False, predicted label: False, score of being positive class: -3.400863, and probability of beling positive class: 0.03226851.
-            //   Actual label: True, predicted label: True, score of being positive class: 4.06056, and probability of beling positive class: 0.9830528.
+            //   Actual label: True, predicted label: True, score of being positive class: 1.115094, and probability of being positive class: 0.7530775.
+            //   Actual label: False, predicted label: False, score of being positive class: -3.478797, and probability of being positive class: 0.02992158.
+            //   Actual label: True, predicted label: True, score of being positive class: 3.191896, and probability of being positive class: 0.9605282.
+            //   Actual label: False, predicted label: False, score of being positive class: -3.400863, and probability of being positive class: 0.03226851.
+            //   Actual label: True, predicted label: True, score of being positive class: 4.06056, and probability of being positive class: 0.9830528.
         }
 
         // Number of features per field.
@@ -195,11 +195,11 @@ namespace Samples.Dynamic.Trainers.BinaryClassification
             Console.WriteLine($"Accuracy: {metrics.Accuracy:F2}");
             Console.WriteLine($"AUC: {metrics.AreaUnderRocCurve:F2}");
             Console.WriteLine($"F1 Score: {metrics.F1Score:F2}");
-            Console.WriteLine($"Negative Precision: " + 
+            Console.WriteLine($"Negative Precision: " +
                 $"{metrics.NegativePrecision:F2}");
 
             Console.WriteLine($"Negative Recall: {metrics.NegativeRecall:F2}");
-            Console.WriteLine($"Positive Precision: " + 
+            Console.WriteLine($"Positive Precision: " +
                 $"{metrics.PositivePrecision:F2}");
 
             Console.WriteLine($"Positive Recall: {metrics.PositiveRecall:F2}");

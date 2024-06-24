@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Microsoft.Extensions.Options;
 using Microsoft.ML;
@@ -20,8 +21,8 @@ namespace Microsoft.Extensions.ML
         private readonly MLOptions _mlContextOptions;
         private readonly IOptionsFactory<PredictionEnginePoolOptions<TData, TPrediction>> _predictionEngineOptions;
         private readonly IServiceProvider _serviceProvider;
-        private readonly PoolLoader<TData,TPrediction> _defaultEnginePool;
-        private readonly Dictionary<string, PoolLoader<TData, TPrediction>> _namedPools;
+        private readonly PoolLoader<TData, TPrediction> _defaultEnginePool;
+        private readonly ConcurrentDictionary<string, PoolLoader<TData, TPrediction>> _namedPools;
 
         public PredictionEnginePool(IServiceProvider serviceProvider,
                                     IOptions<MLOptions> mlContextOptions,
@@ -38,7 +39,7 @@ namespace Microsoft.Extensions.ML
                 _defaultEnginePool = new PoolLoader<TData, TPrediction>(_serviceProvider, defaultOptions);
             }
 
-            _namedPools = new Dictionary<string, PoolLoader<TData, TPrediction>>();
+            _namedPools = new ConcurrentDictionary<string, PoolLoader<TData, TPrediction>>();
         }
 
         /// <summary>
@@ -49,6 +50,11 @@ namespace Microsoft.Extensions.ML
         /// </param>
         public ITransformer GetModel(string modelName)
         {
+            if (!_namedPools.ContainsKey(modelName))
+            {
+                AddPool(modelName);
+            }
+
             return _namedPools[modelName].Loader.GetModel();
         }
 
@@ -79,9 +85,9 @@ namespace Microsoft.Extensions.ML
         /// </param>
         public PredictionEngine<TData, TPrediction> GetPredictionEngine(string modelName)
         {
-            if (_namedPools.ContainsKey(modelName))
+            if (_namedPools.TryGetValue(modelName, out var existingPool))
             {
-                return _namedPools[modelName].PredictionEnginePool.Get();
+                return existingPool.PredictionEnginePool.Get();
             }
 
             //This is the case where someone has used string.Empty to get the default model.
@@ -94,14 +100,20 @@ namespace Microsoft.Extensions.ML
                     throw new ArgumentException("You need to configure a default, not named, model before you use this method.");
                 }
 
-               return _defaultEnginePool.PredictionEnginePool.Get();
+                return _defaultEnginePool.PredictionEnginePool.Get();
             }
 
+            var pool = AddPool(modelName);
+            return pool.PredictionEnginePool.Get();
+        }
+
+        private PoolLoader<TData, TPrediction> AddPool(string modelName)
+        {
             //Here we are in the world of named models where the model hasn't been built yet.
             var options = _predictionEngineOptions.Create(modelName);
             var pool = new PoolLoader<TData, TPrediction>(_serviceProvider, options);
-            _namedPools.Add(modelName, pool);
-            return pool.PredictionEnginePool.Get();
+            pool = _namedPools.GetOrAdd(modelName, pool);
+            return pool;
         }
 
         /// <summary>

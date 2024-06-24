@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Microsoft.ML;
 using Microsoft.ML.CommandLine;
 using Microsoft.ML.Data;
@@ -67,7 +68,7 @@ namespace Microsoft.ML.Trainers.LightGbm
             ctx.SetVersionInfo(GetVersionInfo());
         }
 
-        private static LightGbmRankingModelParameters Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static LightGbmRankingModelParameters Create(IHostEnvironment env, ModelLoadContext ctx)
         {
             return new LightGbmRankingModelParameters(env, ctx);
         }
@@ -90,6 +91,7 @@ namespace Microsoft.ML.Trainers.LightGbm
     /// | Is normalization required? | No |
     /// | Is caching required? | No |
     /// | Required NuGet in addition to Microsoft.ML | Microsoft.ML.LightGbm |
+    /// | Exportable to ONNX | No |
     ///
     /// [!include[algorithm](~/../docs/samples/docs/api-reference/algo-details-lightgbm.md)]
     /// ]]>
@@ -155,6 +157,11 @@ namespace Microsoft.ML.Trainers.LightGbm
                 NameMapping.Add(nameof(EvaluateMetricType.NormalizedDiscountedCumulativeGain), "ndcg");
             }
 
+            public Options()
+            {
+                RowGroupColumnName = DefaultColumnNames.GroupId; // Use GroupId as default for ranking options.
+            }
+
             internal override Dictionary<string, object> ToDictionary(IHost host)
             {
                 var res = base.ToDictionary(host);
@@ -178,7 +185,7 @@ namespace Microsoft.ML.Trainers.LightGbm
         /// <param name="env">The private instance of <see cref="IHostEnvironment"/>.</param>
         /// <param name="labelColumnName">The name of the label column.</param>
         /// <param name="featureColumnName">The name of the feature column.</param>
-        /// <param name="rowGroupdColumnName">The name of the column containing the group ID. </param>
+        /// <param name="rowGroupIdColumnName">The name of the column containing the group ID. </param>
         /// <param name="weightsColumnName">The name of the optional column containing the initial weights.</param>
         /// <param name="numberOfLeaves">The number of leaves to use.</param>
         /// <param name="learningRate">The learning rate.</param>
@@ -187,7 +194,7 @@ namespace Microsoft.ML.Trainers.LightGbm
         internal LightGbmRankingTrainer(IHostEnvironment env,
             string labelColumnName = DefaultColumnNames.Label,
             string featureColumnName = DefaultColumnNames.Features,
-            string rowGroupdColumnName = DefaultColumnNames.GroupId,
+            string rowGroupIdColumnName = DefaultColumnNames.GroupId,
             string weightsColumnName = null,
             int? numberOfLeaves = null,
             int? minimumExampleCountPerLeaf = null,
@@ -199,37 +206,62 @@ namespace Microsoft.ML.Trainers.LightGbm
                       LabelColumnName = labelColumnName,
                       FeatureColumnName = featureColumnName,
                       ExampleWeightColumnName = weightsColumnName,
-                      RowGroupColumnName = rowGroupdColumnName,
+                      RowGroupColumnName = rowGroupIdColumnName,
                       NumberOfLeaves = numberOfLeaves,
                       MinimumExampleCountPerLeaf = minimumExampleCountPerLeaf,
                       LearningRate = learningRate,
                       NumberOfIterations = numberOfIterations
                   })
         {
-            Host.CheckNonEmpty(rowGroupdColumnName, nameof(rowGroupdColumnName));
+            Host.CheckNonEmpty(rowGroupIdColumnName, nameof(rowGroupIdColumnName));
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="LightGbmRankingTrainer"/>
+        /// </summary>
+        /// <param name="env">The private instance of <see cref="IHostEnvironment"/>.</param>
+        /// <param name="lightGbmModel"> A pre-trained <see cref="System.IO.Stream"/> of a LightGBM model file inferencing</param>
+        /// <param name="featureColumnName">The name of the feature column.</param>
+        internal LightGbmRankingTrainer(IHostEnvironment env,
+            Stream lightGbmModel,
+            string featureColumnName = DefaultColumnNames.Features)
+            : base(env,
+                  LoadNameValue,
+                  new Options()
+                  {
+                      FeatureColumnName = featureColumnName,
+                      LightGbmModel = lightGbmModel
+                  },
+                  new SchemaShape.Column())
+        {
         }
 
         private protected override void CheckDataValid(IChannel ch, RoleMappedData data)
         {
             Host.AssertValue(ch);
             base.CheckDataValid(ch, data);
-            // Check label types.
-            var labelCol = data.Schema.Label.Value;
-            var labelType = labelCol.Type;
-            if (!(labelType is KeyDataViewType || labelType == NumberDataViewType.Single))
+
+            // If using a pre-trained model file we don't need a label or group column
+            if (LightGbmTrainerOptions.LightGbmModel == null)
             {
-                throw ch.ExceptParam(nameof(data),
-                    $"Label column '{labelCol.Name}' is of type '{labelType.RawType}', but must be Key or Single.");
-            }
-            // Check group types.
-            if(!data.Schema.Group.HasValue)
-                throw ch.ExceptValue(nameof(data.Schema.Group), "Group column is missing.") ;
-            var groupCol = data.Schema.Group.Value;
-            var groupType = groupCol.Type;
-            if (!(groupType == NumberDataViewType.UInt32 || groupType is KeyDataViewType))
-            {
-                throw ch.ExceptParam(nameof(data),
-                   $"Group column '{groupCol.Name}' is of type '{groupType.RawType}', but must be UInt32 or Key.");
+                // Check label types.
+                var labelCol = data.Schema.Label.Value;
+                var labelType = labelCol.Type;
+                if (!(labelType is KeyDataViewType || labelType == NumberDataViewType.Single))
+                {
+                    throw ch.ExceptParam(nameof(data),
+                        $"Label column '{labelCol.Name}' is of type '{labelType.RawType}', but must be Key or Single.");
+                }
+                // Check group types.
+                if (!data.Schema.Group.HasValue)
+                    throw ch.ExceptValue(nameof(data.Schema.Group), "Group column is missing.");
+                var groupCol = data.Schema.Group.Value;
+                var groupType = groupCol.Type;
+                if (!(groupType == NumberDataViewType.UInt32 || groupType is KeyDataViewType))
+                {
+                    throw ch.ExceptParam(nameof(data),
+                       $"Group column '{groupCol.Name}' is of type '{groupType.RawType}', but must be UInt32 or Key.");
+                }
             }
         }
 

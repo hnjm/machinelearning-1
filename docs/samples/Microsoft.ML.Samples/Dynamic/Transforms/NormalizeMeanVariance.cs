@@ -83,12 +83,12 @@ namespace Samples.Dynamic
             //  y = 0.5 * (1 + ERF((x - 0.5) / (1.118034 * sqrt(2)))
 
             var noCdfParams = normalizeNoCdfTransform
-                .GetNormalizerModelParameters(0) as 
+                .GetNormalizerModelParameters(0) as
                 AffineNormalizerModelParameters<ImmutableArray<float>>;
 
             var offset = noCdfParams.Offset.Length == 0 ? 0 : noCdfParams.Offset[1];
             var scale = noCdfParams.Scale[1];
-            Console.WriteLine($"Values for slot 1 would be transfromed by " +
+            Console.WriteLine($"Values for slot 1 would be transformed by " +
                 $"applying y = (x - ({offset})) * {scale}");
             // Expected output:
             // The 1-index value in resulting array would be produce by: y = (x - (0)) * 0.8164966

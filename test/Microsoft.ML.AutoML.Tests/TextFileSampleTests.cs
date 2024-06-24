@@ -4,13 +4,19 @@
 
 using System.IO;
 using System.Text;
+using Microsoft.ML.TestFramework;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.ML.AutoML.Test
 {
-    
-    public class TextFileSampleTests
+
+    public class TextFileSampleTests : BaseTestClass
     {
+        public TextFileSampleTests(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         public void CanParseLargeRandomStream()
         {
@@ -30,7 +36,7 @@ namespace Microsoft.ML.AutoML.Test
                     // think file is encoded with UTF-16 or UTF-32 without a BOM
                     for (var k = 0; k < row.Length; k++)
                     {
-                        if(row[k] == 0)
+                        if (row[k] == 0)
                         {
                             row[k] = 1;
                         }

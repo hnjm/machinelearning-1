@@ -7,7 +7,7 @@ namespace Samples.Dynamic
 {
     /// This example demonstrates the use of the ValueToKeyMappingEstimator, by
     /// mapping KeyType values to the original strings. For more on ML.NET KeyTypes
-    /// see: https://github.com/dotnet/machinelearning/blob/master/docs/code/IDataViewTypeSystem.md#key-types 
+    /// see: https://github.com/dotnet/machinelearning/blob/main/docs/code/IDataViewTypeSystem.md#key-types
     public class MapKeyToValueMultiColumn
     {
         public static void Example()
@@ -26,7 +26,7 @@ namespace Samples.Dynamic
             // by ML.NET API.
             var dataView = mlContext.Data.LoadFromEnumerable(examples);
 
-            // Create a pipeline. 
+            // Create a pipeline.
             var pipeline =
                     // Convert the string labels into key types.
                     mlContext.Transforms.Conversion.MapValueToKey("Label")
@@ -34,15 +34,15 @@ namespace Samples.Dynamic
                     .Append(mlContext.MulticlassClassification.Trainers.
                     SdcaMaximumEntropy());
 
-            // Train the model and do predictions on same data set. 
-            // Typically predictions would be in a different, validation set. 
+            // Train the model and do predictions on same data set.
+            // Typically predictions would be in a different, validation set.
             var dataWithPredictions = pipeline.Fit(dataView).Transform(dataView);
 
-            // At this point, the Label colum is tranformed from strings, to
+            // At this point, the Label column is transformed from strings, to
             // DataViewKeyType and the transformation has added the PredictedLabel
             // column, with same DataViewKeyType as transformed Label column.
             // MapKeyToValue would take columns with DataViewKeyType and convert
-            // them back to thier original values.
+            // them back to their original values.
             var newPipeline = mlContext.Transforms.Conversion.MapKeyToValue(new[]
             {
                 new InputOutputColumnPair("LabelOriginalValue","Label"),

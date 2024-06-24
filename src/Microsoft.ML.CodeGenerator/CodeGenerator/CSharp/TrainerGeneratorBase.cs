@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -12,7 +12,7 @@ using Microsoft.ML.AutoML;
 namespace Microsoft.ML.CodeGenerator.CSharp
 {
     /// <summary>
-    /// Supports generation of code for trainers (Binary,Multi,Regression)
+    /// Supports generation of code for trainers (Binary,Multi,Regression,Ranking)
     /// </summary>
     internal abstract class TrainerGeneratorBase : ITrainerGenerator
     {
@@ -95,6 +95,12 @@ namespace Microsoft.ML.CodeGenerator.CSharp
 
                     // string to "string"
                     value = "\"" + val + "\"";
+                }
+
+                if (type.IsEnum)
+                {
+                    //example: "MatrixFactorizationTrainer.LossFunctionType.SquareLossRegression"
+                    value = $"{type.ReflectedType.Name}.{type.Name}.{kv.Value.ToString()}";
                 }
 
                 if (type == typeof(CustomProperty))

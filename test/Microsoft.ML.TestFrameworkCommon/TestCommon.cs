@@ -55,12 +55,22 @@ namespace Microsoft.ML.TestFrameworkCommon
             return path;
         }
 
+        /// <summary>
+        /// Environment variable containing path to the test data and BaseLineOutput folders.
+        /// </summary>
+        public const string TestDataDirEnvVariable = "ML_TEST_DATADIR";
+
         public static string GetRepoRoot()
         {
+            string directory = Environment.GetEnvironmentVariable(TestDataDirEnvVariable);
+            if (directory != null)
+            {
+                return directory;
+            }
 #if NETFRAMEWORK
-            string directory = AppDomain.CurrentDomain.BaseDirectory;
+            directory = AppDomain.CurrentDomain.BaseDirectory;
 #else
-            string directory = AppContext.BaseDirectory;
+            directory = AppContext.BaseDirectory;
 #endif
 
             while (!Directory.Exists(Path.Combine(directory, ".git")) && directory != null)
@@ -90,7 +100,8 @@ namespace Microsoft.ML.TestFrameworkCommon
                 Assert.True(EqualTypes(type1, type2, exactTypes), $"column type mismatch at index {col}");
 
                 // This ensures that the two schemas map names to the same column indices.
-                int col1, col2;
+                int col1;
+                int col2;
                 bool f1 = sch1.TryGetColumnIndex(name1, out col1);
                 bool f2 = sch2.TryGetColumnIndex(name2, out col2);
 
@@ -152,7 +163,8 @@ namespace Microsoft.ML.TestFrameworkCommon
             {
                 int iv1 = v1.IsDense ? iiv1 : iiv1 < v1Indices.Length ? v1Indices[iiv1] : v1.Length;
                 int iv2 = v2.IsDense ? iiv2 : iiv2 < v2Indices.Length ? v2Indices[iiv2] : v2.Length;
-                T x1, x2;
+                T x1;
+                T x2;
                 int iv;
                 if (iv1 == iv2)
                 {
@@ -236,7 +248,7 @@ namespace Microsoft.ML.TestFrameworkCommon
 
             Assert.False(size > int.MaxValue, $"{nameof(KeyDataViewType)}.{nameof(KeyDataViewType.Count)} is larger than int.MaxValue");
             Assert.True(EqualTypes(t1, t2, exactTypes), $"Different {kind} metadata types: {t1} vs {t2}");
-            
+
             if (!(t1.GetItemType() is TextDataViewType))
             {
                 if (!mustBeText)
@@ -259,7 +271,7 @@ namespace Microsoft.ML.TestFrameworkCommon
             try
             {
                 sch[col].Annotations.GetValue(kind, ref names);
-                
+
                 return false;
             }
             catch (InvalidOperationException ex)

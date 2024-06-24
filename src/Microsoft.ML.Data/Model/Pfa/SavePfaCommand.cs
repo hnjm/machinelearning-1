@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -130,7 +130,7 @@ namespace Microsoft.ML.Model.Pfa
                 rawPred = null;
                 trainSchema = null;
                 Host.CheckUserArg(ImplOptions.LoadPredictor != true, nameof(ImplOptions.LoadPredictor),
-                    "Cannot be set to true unless " + nameof(ImplOptions.InputModelFile) + " is also specifified.");
+                    "Cannot be set to true unless " + nameof(ImplOptions.InputModelFile) + " is also specified.");
             }
             else
                 LoadModelObjects(ch, _loadPredictor, out rawPred, true, out trainSchema, out loader);

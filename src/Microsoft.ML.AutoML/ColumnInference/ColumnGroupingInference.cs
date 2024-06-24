@@ -1,18 +1,19 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Microsoft.ML.Data;
 using static Microsoft.ML.Data.TextLoader;
+
+using Range = Microsoft.ML.Data.TextLoader.Range;
 
 namespace Microsoft.ML.AutoML
 {
     /// <summary>
-    /// This class incapsulates logic for grouping together the inferred columns of the text file based on their type
+    /// This class encapsulates logic for grouping together the inferred columns of the text file based on their type
     /// and purpose, and generating column names.
     /// </summary>
     internal static class ColumnGroupingInference
@@ -66,7 +67,7 @@ namespace Microsoft.ML.AutoML
                         purposeGroupId = GetPurposeGroupId(t.Item1.ColumnIndex, t.Item2.Purpose)
                     }
                     into g
-                    select g;
+                select g;
 
             foreach (var g in grouped)
             {

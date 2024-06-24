@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -11,14 +11,14 @@ namespace Microsoft.ML.Trainers.FastTree
 {
     internal class GradientDescent : OptimizationAlgorithm
     {
-        private IGradientAdjuster _gradientWrapper;
+        private readonly IGradientAdjuster _gradientWrapper;
 
         /// number of trees dropped in this iteration
         private int _numberOfDroppedTrees;
         // treeScores stores for every tree the predictions it makes on every training example. This is used
         // to eliminate the need for computing the scores when we drop trees. However, it causes a horrifying
         // memory drain.
-        private List<double[]> _treeScores;
+        private readonly List<double[]> _treeScores;
         private double[] _droppedScores;
         private double[] _scores;
 

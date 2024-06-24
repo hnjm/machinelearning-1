@@ -58,7 +58,7 @@ namespace Microsoft.ML.Data
             Contracts.CheckValue(env, nameof(env));
             env.CheckValue(data, nameof(data));
             env.CheckValue(mapper, nameof(mapper));
-            if (args.Top< 0)
+            if (args.Top < 0)
                 throw env.Except($"Number of top contribution must be non negative");
             if (args.Bottom < 0)
                 throw env.Except($"Number of bottom contribution must be non negative");
@@ -91,6 +91,9 @@ namespace Microsoft.ML.Data
         /// </summary>
         private sealed class BindableMapper : ISchemaBindableMapper, ICanSaveModel, IPredictor
         {
+            private static readonly FuncInstanceMethodInfo1<BindableMapper, DataViewRow, int, Delegate> _getValueGetterMethodInfo
+                = FuncInstanceMethodInfo1<BindableMapper, DataViewRow, int, Delegate>.Create(target => target.GetValueGetter<int>);
+
             private readonly int _topContributionsCount;
             private readonly int _bottomContributionsCount;
             private readonly bool _normalize;
@@ -202,12 +205,10 @@ namespace Microsoft.ML.Data
                 Contracts.Check(0 <= colSrc && colSrc < input.Schema.Count);
 
                 var typeSrc = input.Schema[colSrc].Type;
-                Func<DataViewRow, int, ValueGetter<VBuffer<float>>> del = GetValueGetter<int>;
 
                 // REVIEW: Assuming Feature contributions will be VBuffer<float>.
                 // For multiclass LR it needs to be(VBuffer<float>[].
-                var meth = del.GetMethodInfo().GetGenericMethodDefinition().MakeGenericMethod(typeSrc.RawType);
-                return (Delegate)meth.Invoke(this, new object[] { input, colSrc });
+                return Utils.MarshalInvoke(_getValueGetterMethodInfo, this, typeSrc.RawType, input, colSrc);
             }
 
             private ReadOnlyMemory<char> GetSlotName(int index, VBuffer<ReadOnlyMemory<char>> slotNames)
@@ -298,7 +299,7 @@ namespace Microsoft.ML.Data
             private readonly BindableMapper _parent;
             private readonly DataViewSchema _outputSchema;
             private readonly DataViewSchema _outputGenericSchema;
-            private VBuffer<ReadOnlyMemory<char>> _slotNames;
+            private readonly VBuffer<ReadOnlyMemory<char>> _slotNames;
 
             public RoleMappedSchema InputRoleMappedSchema { get; }
 

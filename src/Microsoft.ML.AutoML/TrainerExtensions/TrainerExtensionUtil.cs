@@ -43,13 +43,16 @@ namespace Microsoft.ML.AutoML
         SymbolicSgdLogisticRegressionBinary,
         SymbolicSgdLogisticRegressionOva,
         MatrixFactorization,
-        ImageClassification
+        ImageClassification,
+        LightGbmRanking,
+        FastTreeRanking
     }
 
     internal static class TrainerExtensionUtil
     {
         private const string WeightColumn = "ExampleWeightColumnName";
         private const string LabelColumn = "LabelColumnName";
+        private const string GroupColumn = "GroupColumnName";
 
         public static T CreateOptions<T>(IEnumerable<SweepableParam> sweepParams, string labelColumn) where T : TrainerInputBaseWithLabel
         {
@@ -72,7 +75,7 @@ namespace Microsoft.ML.AutoML
             return options;
         }
 
-        private static string[] _lightGbmBoosterParamNames = new[] { "L2Regularization", "L1Regularization" };
+        private static readonly string[] _lightGbmBoosterParamNames = new[] { "L2Regularization", "L1Regularization" };
         private const string LightGbmBoosterPropName = "Booster";
 
         public static TOptions CreateLightGbmOptions<TOptions, TOutput, TTransformer, TModel>(IEnumerable<SweepableParam> sweepParams, ColumnInformation columnInfo)
@@ -129,10 +132,10 @@ namespace Microsoft.ML.AutoML
         }
 
         public static PipelineNode BuildLightGbmPipelineNode(TrainerName trainerName, IEnumerable<SweepableParam> sweepParams,
-            string labelColumn, string weightColumn)
+            string labelColumn, string weightColumn, string groupColumn)
         {
             return new PipelineNode(trainerName.ToString(), PipelineNodeType.Trainer, DefaultColumnNames.Features,
-                DefaultColumnNames.Score, BuildLightGbmPipelineNodeProps(sweepParams, labelColumn, weightColumn));
+                DefaultColumnNames.Score, BuildLightGbmPipelineNodeProps(sweepParams, labelColumn, weightColumn, groupColumn));
         }
 
         private static IDictionary<string, object> BuildBasePipelineNodeProps(IEnumerable<SweepableParam> sweepParams,
@@ -155,7 +158,7 @@ namespace Microsoft.ML.AutoML
         }
 
         private static IDictionary<string, object> BuildLightGbmPipelineNodeProps(IEnumerable<SweepableParam> sweepParams,
-            string labelColumn, string weightColumn)
+            string labelColumn, string weightColumn, string groupColumn)
         {
             Dictionary<string, object> props = null;
             if (sweepParams == null || !sweepParams.Any())
@@ -179,6 +182,10 @@ namespace Microsoft.ML.AutoML
             {
                 props[WeightColumn] = weightColumn;
             }
+            if (groupColumn != null)
+            {
+                props[GroupColumn] = groupColumn;
+            }
 
             return props;
         }
@@ -189,7 +196,7 @@ namespace Microsoft.ML.AutoML
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
             if (trainerName == TrainerName.LightGbmBinary || trainerName == TrainerName.LightGbmMulti ||
-                trainerName == TrainerName.LightGbmRegression)
+                trainerName == TrainerName.LightGbmRegression || trainerName == TrainerName.LightGbmRanking)
             {
                 return BuildLightGbmParameterSet(props);
             }
@@ -295,24 +302,16 @@ namespace Microsoft.ML.AutoML
         {
             switch (binaryTrainer)
             {
-                case BinaryClassificationTrainer.AveragedPerceptron:
-                    return TrainerName.AveragedPerceptronBinary;
                 case BinaryClassificationTrainer.FastForest:
                     return TrainerName.FastForestBinary;
                 case BinaryClassificationTrainer.FastTree:
                     return TrainerName.FastTreeBinary;
                 case BinaryClassificationTrainer.LightGbm:
                     return TrainerName.LightGbmBinary;
-                case BinaryClassificationTrainer.LinearSvm:
-                    return TrainerName.LinearSvmBinary;
                 case BinaryClassificationTrainer.LbfgsLogisticRegression:
                     return TrainerName.LbfgsLogisticRegressionBinary;
                 case BinaryClassificationTrainer.SdcaLogisticRegression:
                     return TrainerName.SdcaLogisticRegressionBinary;
-                case BinaryClassificationTrainer.SgdCalibrated:
-                    return TrainerName.SgdCalibratedBinary;
-                case BinaryClassificationTrainer.SymbolicSgdLogisticRegression:
-                    return TrainerName.SymbolicSgdLogisticRegressionBinary;
             }
 
             // never expected to reach here
@@ -323,26 +322,18 @@ namespace Microsoft.ML.AutoML
         {
             switch (multiTrainer)
             {
-                case MulticlassClassificationTrainer.AveragedPerceptronOva:
-                    return TrainerName.AveragedPerceptronOva;
                 case MulticlassClassificationTrainer.FastForestOva:
                     return TrainerName.FastForestOva;
                 case MulticlassClassificationTrainer.FastTreeOva:
                     return TrainerName.FastTreeOva;
                 case MulticlassClassificationTrainer.LightGbm:
                     return TrainerName.LightGbmMulti;
-                case MulticlassClassificationTrainer.LinearSupportVectorMachinesOva:
-                    return TrainerName.LinearSvmOva;
                 case MulticlassClassificationTrainer.LbfgsMaximumEntropy:
                     return TrainerName.LbfgsMaximumEntropyMulti;
                 case MulticlassClassificationTrainer.LbfgsLogisticRegressionOva:
                     return TrainerName.LbfgsLogisticRegressionOva;
                 case MulticlassClassificationTrainer.SdcaMaximumEntropy:
                     return TrainerName.SdcaMaximumEntropyMulti;
-                case MulticlassClassificationTrainer.SgdCalibratedOva:
-                    return TrainerName.SgdCalibratedOva;
-                case MulticlassClassificationTrainer.SymbolicSgdLogisticRegressionOva:
-                    return TrainerName.SymbolicSgdLogisticRegressionOva;
             }
 
             // never expected to reach here
@@ -361,10 +352,6 @@ namespace Microsoft.ML.AutoML
                     return TrainerName.FastTreeTweedieRegression;
                 case RegressionTrainer.LightGbm:
                     return TrainerName.LightGbmRegression;
-                case RegressionTrainer.OnlineGradientDescent:
-                    return TrainerName.OnlineGradientDescentRegression;
-                case RegressionTrainer.Ols:
-                    return TrainerName.OlsRegression;
                 case RegressionTrainer.LbfgsPoissonRegression:
                     return TrainerName.LbfgsPoissonRegression;
                 case RegressionTrainer.StochasticDualCoordinateAscent:
@@ -373,6 +360,20 @@ namespace Microsoft.ML.AutoML
 
             // never expected to reach here
             throw new NotSupportedException($"{regressionTrainer} not supported");
+        }
+
+        public static TrainerName GetTrainerName(RankingTrainer rankingTrainer)
+        {
+            switch (rankingTrainer)
+            {
+                case RankingTrainer.FastTreeRanking:
+                    return TrainerName.FastTreeRanking;
+                case RankingTrainer.LightGbmRanking:
+                    return TrainerName.LightGbmRanking;
+            }
+
+            // never expected to reach here
+            throw new NotSupportedException($"{rankingTrainer} not supported");
         }
 
         public static TrainerName GetTrainerName(RecommendationTrainer recommendationTrainer)
@@ -405,6 +406,11 @@ namespace Microsoft.ML.AutoML
         public static IEnumerable<TrainerName> GetTrainerNames(IEnumerable<RecommendationTrainer> recommendationTrainers)
         {
             return recommendationTrainers?.Select(t => GetTrainerName(t));
+        }
+
+        public static IEnumerable<TrainerName> GetTrainerNames(IEnumerable<RankingTrainer> rankingTrainers)
+        {
+            return rankingTrainers?.Select(t => GetTrainerName(t));
         }
     }
 }

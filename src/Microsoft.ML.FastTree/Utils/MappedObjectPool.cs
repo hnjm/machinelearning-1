@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -12,10 +12,10 @@ namespace Microsoft.ML.Trainers.FastTree
     /// </summary>
     internal class MappedObjectPool<T> where T : class
     {
-        private T[] _pool;
-        private int[] _map;
-        private int[] _inverseMap;
-        private int[] _lastAccessTime;
+        private readonly T[] _pool;
+        private readonly int[] _map;
+        private readonly int[] _inverseMap;
+        private readonly int[] _lastAccessTime;
         private int _time;
 
         /// <summary>

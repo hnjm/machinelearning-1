@@ -10,6 +10,7 @@ usage()
     echo "  --configuration <Configuration>   Build Configuration (Debug, Release)"
     echo "  --stripSymbols                    Enable symbol stripping (to external file)"
     echo "  --mkllibpath                      Path to mkl library."
+    echo "  --onedallibpath                   Path to oneDAL library."
     exit 1
 }
 
@@ -25,11 +26,15 @@ RootRepo="$DIR/../.."
 __build_arch=
 __strip_argument=
 __configuration=Debug
-__rootBinPath="$RootRepo/bin"
-__baseIntermediateOutputPath="$__rootBinPath/obj"
+__rootBinPath="$RootRepo/artifacts/bin"
+__baseIntermediateOutputPath="$RootRepo/artifacts/obj"
 __versionSourceFile="$__baseIntermediateOutputPath/version.c"
 __mkllibpath=""
 __mkllibrpath=""
+__onedalredistpath=""
+__onedaldevelpath=""
+__onetbbredistpath=""
+__onetbbdevelpath=""
 
 while [ "$1" != "" ]; do
         lowerI="$(echo $1 | awk '{print tolower($0)}')"
@@ -53,7 +58,23 @@ while [ "$1" != "" ]; do
         --mkllibrpath)
             shift
             __mkllibrpath=$1
-            ;;          
+            ;;
+        --onedalredistpath)
+            shift
+            __onedalredistpath=$1
+            ;;
+        --onedaldevelpath)
+            shift
+            __onedaldevelpath=$1
+            ;;
+        --onetbbredistpath)
+            shift
+            __onetbbredistpath=$1
+            ;;
+        --onetbbdevelpath)
+            shift
+            __onetbbdevelpath=$1
+            ;;
         --stripsymbols)
             __strip_argument="-DSTRIP_SYMBOLS=true"
             ;;
@@ -63,16 +84,48 @@ while [ "$1" != "" ]; do
     shift
 done
 
-__cmake_defines="-DCMAKE_BUILD_TYPE=${__configuration} ${__strip_argument} -DMKL_LIB_PATH=${__mkllibpath} -DMKL_LIB_RPATH=${__mkllibrpath}"
+__cmake_defines="-DCMAKE_BUILD_TYPE=${__configuration} ${__strip_argument}"
 
-__IntermediatesDir="$__baseIntermediateOutputPath/$__build_arch.$__configuration/Native"
-__BinDir="$__rootBinPath/$__build_arch.$__configuration/Native"
+if [ -n "$__mkllibpath" ]; then
+    __cmake_defines="${__cmake_defines} -DMKL_LIB_PATH=${__mkllibpath}"
+fi
+
+if [ -n "$__mkllibrpath" ]; then
+    __cmake_defines="${__cmake_defines} -DMKL_LIB_RPATH=${__mkllibrpath}"
+fi
+
+if [ -n "$__onedalredistpath" ]; then
+    __cmake_defines="${__cmake_defines} -DONEDAL_REDIST_PATH=${__onedalredistpath}"
+fi
+
+if [ -n "$__onedaldevelpath" ]; then
+    __cmake_defines="${__cmake_defines} -DONEDAL_DEVEL_PATH=${__onedaldevelpath}"
+fi
+
+if [ -n "$__onetbbredistpath" ]; then
+    __cmake_defines="${__cmake_defines} -DONETBB_REDIST_PATH=${__onetbbredistpath}"
+fi
+
+if [ -n "$__onetbbdevelpath" ]; then
+    __cmake_defines="${__cmake_defines} -DONETBB_DEVEL_PATH=${__onetbbdevelpath}"
+fi
+
+__IntermediatesDir="$__baseIntermediateOutputPath/Native/$__build_arch.$__configuration"
+__BinDir="$__rootBinPath/Native/$__build_arch.$__configuration"
 
 mkdir -p "$__BinDir"
 mkdir -p "$__IntermediatesDir"
 
+export __IntermediatesDir=$__IntermediatesDir
+
 # Set up the environment to be used for building with clang.
-if command -v "clang-3.5" > /dev/null 2>&1; then
+if command -v "clang-9" > /dev/null 2>&1; then
+    export CC="$(command -v clang-9)"
+    export CXX="$(command -v clang++-9)"
+elif command -v "clang-6.0" > /dev/null 2>&1; then
+    export CC="$(command -v clang-6.0)"
+    export CXX="$(command -v clang++-6.0)"
+elif command -v "clang-3.5" > /dev/null 2>&1; then
     export CC="$(command -v clang-3.5)"
     export CXX="$(command -v clang++-3.5)"
 elif command -v "clang-3.6" > /dev/null 2>&1; then
@@ -100,6 +153,23 @@ if [ ! -f $__versionSourceFile ]; then
 fi
 
 __cmake_defines="${__cmake_defines} -DVERSION_FILE_PATH:STRING=${__versionSourceFile}"
+
+OS_ARCH=$(uname -m)
+OS=$(uname)
+
+# If we are cross compiling on Linux we need to set the CMAKE_TOOLCHAIN_FILE
+if [[ ( $OS_ARCH == "amd64" || $OS_ARCH == "x86_64" ) && ( $__build_arch == "arm64" || $__build_arch == "arm" ) && $OS != "Darwin" ]] ; then
+    __cmake_defines="${__cmake_defines} -DCMAKE_TOOLCHAIN_FILE=$RootRepo/eng/common/cross/toolchain.cmake"
+    export TARGET_BUILD_ARCH=$__build_arch
+
+# If we are on a Mac we need to let it know the cross architecture to build for.
+# We use x64 for our 64 bit code, but Mac defines it as x86_64.
+elif [[  $OS == "Darwin" && $__build_arch == "x64" ]] ; then
+    __build_arch="x86_64"
+fi
+
+# Set the ARCHITECTURE for all builds
+__cmake_defines="${__cmake_defines} -DARCHITECTURE=${__build_arch}"
 
 cd "$__IntermediatesDir"
 

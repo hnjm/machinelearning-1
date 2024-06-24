@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -39,7 +39,7 @@ namespace Microsoft.ML.Trainers.FastTree
         public readonly double Bias;
 
         // Multithread task to find best threshold.
-        private IThreadTask _calculateLeafSplitCandidates;
+        private readonly IThreadTask _calculateLeafSplitCandidates;
 
         protected SplitInfo[] BestSplitInfoPerLeaf;
         protected HashSet<int> CategoricalThresholds;
@@ -74,7 +74,7 @@ namespace Microsoft.ML.Trainers.FastTree
         // size of reserved memory
         private readonly long _sizeOfReservedMemory;
 
-        private IParallelTraining _parallelTraining;
+        private readonly IParallelTraining _parallelTraining;
 
         public int MaxCategoricalGroupsPerNode { get; }
 
@@ -347,7 +347,7 @@ namespace Microsoft.ML.Trainers.FastTree
             using (Timer.Time(TimerEvent.FindBestSplit))
             using (Timer.Time(TimerEvent.FindBestSplitOfRoot))
             {
-                var smallSplitInit = Task.Factory.StartNew(() =>
+                var smallSplitInit = Task.Run(() =>
                 {
                     // Initialize.
                     using (Timer.Time(TimerEvent.FindBestSplitInit))
@@ -408,7 +408,7 @@ namespace Microsoft.ML.Trainers.FastTree
                 {
                     using (Timer.Time(TimerEvent.FindBestSplitInit))
                     {
-                        var smallSplitInit = Task.Factory.StartNew(() => SmallerChildSplitCandidates.Initialize(lteChild, partitioning, targets, GetTargetWeights(), FilterZeros));
+                        var smallSplitInit = Task.Run(() => SmallerChildSplitCandidates.Initialize(lteChild, partitioning, targets, GetTargetWeights(), FilterZeros));
                         LargerChildSplitCandidates.Initialize(gtChild, partitioning, targets, GetTargetWeights(), FilterZeros);
                         smallSplitInit.Wait();
                     }
@@ -421,7 +421,7 @@ namespace Microsoft.ML.Trainers.FastTree
                 {
                     using (Timer.Time(TimerEvent.FindBestSplitInit))
                     {
-                        var smallSplitInit = Task.Factory.StartNew(() => SmallerChildSplitCandidates.Initialize(gtChild, partitioning, targets, GetTargetWeights(), FilterZeros));
+                        var smallSplitInit = Task.Run(() => SmallerChildSplitCandidates.Initialize(gtChild, partitioning, targets, GetTargetWeights(), FilterZeros));
                         LargerChildSplitCandidates.Initialize(lteChild, partitioning, targets, GetTargetWeights(), FilterZeros);
                         smallSplitInit.Wait();
                     }
@@ -444,7 +444,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// <summary>
         /// After the gain for each feature has been computed, this function chooses the gain maximizing feature
         /// and sets its info in the right places
-        /// This method is overriden in MPI version of the code
+        /// This method is overridden in MPI version of the code
         /// </summary>
         /// <param name="leafSplitCandidates">the FindBestThesholdleafSplitCandidates data structure that contains the best split information</param>
         protected virtual void FindAndSetBestFeatureForLeaf(LeafSplitCandidates leafSplitCandidates)
@@ -611,7 +611,7 @@ namespace Microsoft.ML.Trainers.FastTree
             {
                 if (BsrMaxTreeOutput < 0)
                     return (sumTargets * sumTargets) / count;
-                // For the BSR case, fall through to below with sweight
+                // For the BSR case, fall through to below with sumWeight
                 // receiving the "natural" weight.
                 sumWeights = count;
             }
@@ -828,7 +828,7 @@ namespace Microsoft.ML.Trainers.FastTree
             private double _sumWeights;
             private double _sumSquaredTargets;
             private int[] _docIndices;
-            private int[] _docIndicesCopy;
+            private readonly int[] _docIndicesCopy;
             public readonly FloatType[] Targets;
             public readonly double[] Weights;
             public readonly SplitInfo[] FeatureSplitInfo;
@@ -1019,7 +1019,7 @@ namespace Microsoft.ML.Trainers.FastTree
                             _sumTargets += target;
                             _docIndices[nonZeroCount] = i;
 
-                            // orignal code here: nonZeroCount++
+                            // original code here: nonZeroCount++
                             // is a bug and it will cause issue in next several lines of code,
                             // so we move it down to the end of if{} block.
                             if (Weights != null)

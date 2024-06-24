@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -321,9 +321,11 @@ namespace Microsoft.ML.Transforms
 
                 if (column.Index != Parent._index)
                     return Input.GetGetter<TValue>(column);
-                var fn = GetGetter() as ValueGetter<TValue>;
+                var originFn = GetGetter();
+                var fn = originFn as ValueGetter<TValue>;
                 if (fn == null)
-                    throw Ch.Except("Invalid TValue in GetGetter: '{0}'", typeof(TValue));
+                    throw Ch.Except($"Invalid TValue in GetGetter: '{typeof(TValue)}', " +
+                            $"expected type: '{originFn.GetType().GetGenericArguments().First()}'.");
 
                 return fn;
             }
@@ -430,7 +432,7 @@ namespace Microsoft.ML.Transforms
                         dst = _value;
                     };
                 bool identity;
-                _conv = Data.Conversion.Conversions.Instance.GetStandardConversion<T, ulong>(Parent._type, NumberDataViewType.UInt64, out identity);
+                _conv = Data.Conversion.Conversions.DefaultInstance.GetStandardConversion<T, ulong>(Parent._type, NumberDataViewType.UInt64, out identity);
             }
 
             protected override Delegate GetGetter()

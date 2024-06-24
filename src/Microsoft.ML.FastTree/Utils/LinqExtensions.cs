@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -184,7 +184,7 @@ namespace Microsoft.ML.Trainers.FastTree
             return argMin;
         }
 
-        // More efficient ToArray pre-allocates the length of array neccessary
+        // More efficient ToArray pre-allocates the length of array necessary
         //  Will truncate the IEnumerable at the given length.
         public static T[] ToArray<T>(this IEnumerable<T> me, int length)
         {
@@ -206,7 +206,7 @@ namespace Microsoft.ML.Trainers.FastTree
         public static IEnumerable<int> CumulativeSum<T>(this IEnumerable<int> s)
         {
             int sum = 0;
-            ;
+
             foreach (var x in s)
             {
                 sum = sum + x;

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.ML.Calibrators;
 using Microsoft.ML.Data;
 using Microsoft.ML.Internal.Utilities;
@@ -13,13 +14,20 @@ using Microsoft.ML.Model;
 using Microsoft.ML.RunTests;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.TestFramework.Attributes;
+using Microsoft.ML.Trainers;
 using Microsoft.ML.Trainers.FastTree;
 using Microsoft.ML.Trainers.LightGbm;
 using Microsoft.ML.Transforms;
 using Xunit;
+using FluentAssertions;
+using System.IO;
 
 namespace Microsoft.ML.Tests.TrainerEstimators
 {
+    [CollectionDefinition(nameof(NoParallelizationDefinition), DisableParallelization = true)]
+    public class NoParallelizationDefinition { }
+
+    [Collection(nameof(NoParallelizationDefinition))]
     public partial class TrainerEstimators : TestDataPipeBase
     {
         /// <summary>
@@ -51,10 +59,11 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         {
             var (pipe, dataView) = GetBinaryClassificationPipeline();
 
+            // Attention: Do not set NumberOfThreads here, left this to use default value to avoid test crash.
+            // Details can be found here: https://github.com/dotnet/machinelearning/pull/4918
             var trainer = ML.BinaryClassification.Trainers.LightGbm(new LightGbmBinaryTrainer.Options
             {
                 NumberOfLeaves = 10,
-                NumberOfThreads = 1,
                 MinimumExampleCountPerLeaf = 2,
                 UnbalancedSets = false, // default value
             });
@@ -72,10 +81,11 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         {
             var (pipe, dataView) = GetBinaryClassificationPipeline();
 
+            // Attention: Do not set NumberOfThreads here, left this to use default value to avoid test crash.
+            // Details can be found here: https://github.com/dotnet/machinelearning/pull/4918
             var trainer = ML.BinaryClassification.Trainers.LightGbm(new LightGbmBinaryTrainer.Options
             {
                 NumberOfLeaves = 10,
-                NumberOfThreads = 1,
                 MinimumExampleCountPerLeaf = 2,
                 UnbalancedSets = true,
             });
@@ -97,10 +107,11 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             var (pipe, dataView) = GetBinaryClassificationPipeline();
             var sigmoid = .789;
 
+            // Attention: Do not set NumberOfThreads here, left this to use default value to avoid test crash.
+            // Details can be found here: https://github.com/dotnet/machinelearning/pull/4918
             var trainer = ML.BinaryClassification.Trainers.LightGbm(new LightGbmBinaryTrainer.Options
             {
                 NumberOfLeaves = 10,
-                NumberOfThreads = 1,
                 MinimumExampleCountPerLeaf = 2,
                 Sigmoid = sigmoid
             });
@@ -217,9 +228,11 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         public void LightGBMRegressorEstimator()
         {
             var dataView = GetRegressionPipeline();
+
+            // Attention: Do not set NumberOfThreads here, left this to use default value to avoid test crash.
+            // Details can be found here: https://github.com/dotnet/machinelearning/pull/4918
             var trainer = ML.Regression.Trainers.LightGbm(new LightGbmRegressionTrainer.Options
             {
-                NumberOfThreads = 1,
                 NormalizeFeatures = NormalizeOption.Warn,
                 L2CategoricalRegularization = 5,
             });
@@ -295,20 +308,41 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             var (pipeline, dataView) = GetMulticlassPipeline();
             var trainer = ML.MulticlassClassification.Trainers.LightGbm(learningRate: 0.4);
             var pipe = pipeline.Append(trainer)
-                    .Append(new KeyToValueMappingEstimator(Env, "PredictedLabel"));
+                .Append(new KeyToValueMappingEstimator(Env, "PredictedLabel"));
             TestEstimatorCore(pipe, dataView);
+            Done();
+        }
+
+        /// <summary>
+        /// LightGbmMulticlass TrainerEstimator test loading a pre-trained model.
+        /// </summary>
+        [LightGBMFact]
+        public void LightGbmMulticlassEstimatorFile()
+        {
+            var modelPath = GetDataPath("iris-lgbm.txt");
+            var (pipeline, dataView) = GetMulticlassPipeline();
+            using (var fStream = new FileStream(modelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                var trainer = ML.MulticlassClassification.Trainers.LightGbm(fStream);
+                var pipe = pipeline.Append(trainer);
+                var data = pipe.Fit(dataView).Transform(dataView).Preview();
+                TestEstimatorCore(pipe, dataView);
+            }
             Done();
         }
 
         /// <summary>
         /// LightGbmMulticlass TrainerEstimator test with options
         /// </summary>
-        [LightGBMFact]
-        public void LightGbmMulticlassEstimatorWithOptions()
+        [LightGBMTheory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void LightGbmMulticlassEstimatorWithOptions(bool softMax)
         {
             var options = new LightGbmMulticlassTrainer.Options
             {
-                EvaluationMetric = LightGbmMulticlassTrainer.Options.EvaluateMetricType.Default
+                EvaluationMetric = LightGbmMulticlassTrainer.Options.EvaluateMetricType.Default,
+                UseSoftmax = softMax
             };
 
             var (pipeline, dataView) = GetMulticlassPipeline();
@@ -488,21 +522,23 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             using (var pch = (mlContext as IProgressChannelProvider).StartProgressChannel("Training LightGBM..."))
             {
                 var host = (mlContext as IHostEnvironment).Register("Training LightGBM...");
-                var gbmNative = WrappedLightGbmTraining.Train(ch, pch, gbmParams, gbmDataSet, numIteration: numberOfTrainingIterations);
 
-                int nativeLength = 0;
-                unsafe
+                using (var gbmNative = WrappedLightGbmTraining.Train(host, ch, pch, gbmParams, gbmDataSet, numIteration: numberOfTrainingIterations))
                 {
-                    fixed (float* data = dataMatrix)
-                    fixed (double* result0 = lgbmProbabilities)
-                    fixed (double* result1 = lgbmRawScores)
+                    int nativeLength = 0;
+                    unsafe
                     {
-                        WrappedLightGbmInterface.BoosterPredictForMat(gbmNative.Handle, (IntPtr)data, WrappedLightGbmInterface.CApiDType.Float32,
-                            _rowNumber, _columnNumber, 1, (int)WrappedLightGbmInterface.CApiPredictType.Normal, numberOfTrainingIterations, "", ref nativeLength, result0);
-                        WrappedLightGbmInterface.BoosterPredictForMat(gbmNative.Handle, (IntPtr)data, WrappedLightGbmInterface.CApiDType.Float32,
-                            _rowNumber, _columnNumber, 1, (int)WrappedLightGbmInterface.CApiPredictType.Raw, numberOfTrainingIterations, "", ref nativeLength, result1);
+                        fixed (float* data = dataMatrix)
+                        fixed (double* result0 = lgbmProbabilities)
+                        fixed (double* result1 = lgbmRawScores)
+                        {
+                            WrappedLightGbmInterface.BoosterPredictForMat(gbmNative.Handle, (IntPtr)data, WrappedLightGbmInterface.CApiDType.Float32,
+                                _rowNumber, _columnNumber, 1, (int)WrappedLightGbmInterface.CApiPredictType.Normal, 0, numberOfTrainingIterations, "", ref nativeLength, result0);
+                            WrappedLightGbmInterface.BoosterPredictForMat(gbmNative.Handle, (IntPtr)data, WrappedLightGbmInterface.CApiDType.Float32,
+                                _rowNumber, _columnNumber, 1, (int)WrappedLightGbmInterface.CApiPredictType.Raw, 0, numberOfTrainingIterations, "", ref nativeLength, result1);
+                        }
+                        modelString = gbmNative.GetModelString();
                     }
-                    modelString = gbmNative.GetModelString();
                 }
             }
         }
@@ -525,7 +561,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
                 double sum = 0;
                 for (int j = 0; j < _classNumber; ++j)
                 {
-                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 6);
+                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 0.000001);
                     if (float.IsNaN((float)nativeResult1[j + i * _classNumber]))
                         continue;
                     sum += MathUtils.SigmoidSlow(sigmoidScale * (float)nativeResult1[j + i * _classNumber]);
@@ -533,7 +569,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
                 for (int j = 0; j < _classNumber; ++j)
                 {
                     double prob = MathUtils.SigmoidSlow(sigmoidScale * (float)nativeResult1[j + i * _classNumber]);
-                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 6);
+                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 0.000001);
                 }
             }
 
@@ -561,7 +597,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
                 double sum = 0;
                 for (int j = 0; j < _classNumber; ++j)
                 {
-                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 6);
+                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 0.000001);
                     if (float.IsNaN((float)nativeResult1[j + i * _classNumber]))
                         continue;
                     sum += MathUtils.SigmoidSlow((float)sigmoidScale * (float)nativeResult1[j + i * _classNumber]);
@@ -569,7 +605,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
                 for (int j = 0; j < _classNumber; ++j)
                 {
                     double prob = MathUtils.SigmoidSlow((float)sigmoidScale * (float)nativeResult1[j + i * _classNumber]);
-                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 6);
+                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 0.000001);
                 }
             }
 
@@ -582,7 +618,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         [LightGBMFact]
         public void LightGbmMulticlassEstimatorCompareOvaUsingDifferentSigmoids()
         {
-            // Run native implemenation twice, see that results are different with different sigmoid values.
+            // Run native implementation twice, see that results are different with different sigmoid values.
             var firstSigmoidScale = .790;
             var secondSigmoidScale = .2;
 
@@ -632,13 +668,13 @@ namespace Microsoft.ML.Tests.TrainerEstimators
                 double sum = 0;
                 for (int j = 0; j < _classNumber; ++j)
                 {
-                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 6);
+                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 0.000001);
                     sum += Math.Exp((float)nativeResult1[j + i * _classNumber]);
                 }
                 for (int j = 0; j < _classNumber; ++j)
                 {
                     double prob = Math.Exp(nativeResult1[j + i * _classNumber]);
-                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 6);
+                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 0.000001);
                 }
             }
 
@@ -649,7 +685,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         public void LightGbmMulticlassEstimatorCompareUnbalanced()
         {
             // Train ML.NET LightGBM and native LightGBM and apply the trained models to the training set.
-            LightGbmHelper(useSoftmax: true, sigmoid: .5, out string modelString, out List<GbmExample> mlnetPredictions, out double[] nativeResult1, out double[] nativeResult0, unbalancedSets:true);
+            LightGbmHelper(useSoftmax: true, sigmoid: .5, out string modelString, out List<GbmExample> mlnetPredictions, out double[] nativeResult1, out double[] nativeResult0, unbalancedSets: true);
 
             // The i-th predictor returned by LightGBM produces the raw score, denoted by z_i, of the i-th class.
             // Assume that we have n classes in total. The i-th class probability can be computed via
@@ -661,15 +697,76 @@ namespace Microsoft.ML.Tests.TrainerEstimators
                 double sum = 0;
                 for (int j = 0; j < _classNumber; ++j)
                 {
-                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 6);
+                    Assert.Equal(nativeResult0[j + i * _classNumber], mlnetPredictions[i].Score[j], 0.000001);
                     sum += Math.Exp((float)nativeResult1[j + i * _classNumber]);
                 }
                 for (int j = 0; j < _classNumber; ++j)
                 {
                     double prob = Math.Exp(nativeResult1[j + i * _classNumber]);
-                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 6);
+                    Assert.Equal(prob / sum, mlnetPredictions[i].Score[j], 0.000001);
                 }
             }
+
+            Done();
+        }
+
+        private class DataPoint
+        {
+            public uint Label { get; set; }
+
+            [VectorType(20)]
+            public float[] Features { get; set; }
+        }
+
+        private static IEnumerable<DataPoint> GenerateRandomDataPoints(int count,
+            int seed = 0, int numClasses = 3)
+
+        {
+            var random = new Random(seed);
+            float randomFloat() => (float)(random.NextDouble() - 0.5);
+            for (int i = 0; i < count; i++)
+            {
+                var label = random.Next(1, numClasses + 1);
+                yield return new DataPoint
+                {
+                    Label = (uint)label,
+                    Features = Enumerable.Repeat(label, 20)
+                        .Select(x => randomFloat() + label * 0.2f).ToArray()
+                };
+            }
+        }
+
+        [LightGBMFact]
+        public void LightGbmFitMoreThanOnce()
+        {
+            var mlContext = new MLContext(seed: 0);
+
+            var pipeline =
+                mlContext.Transforms.Conversion
+                .MapValueToKey(nameof(DataPoint.Label))
+                .Append(mlContext.MulticlassClassification.Trainers
+                .LightGbm());
+
+            var numClasses = 3;
+            var dataPoints = GenerateRandomDataPoints(100, numClasses: numClasses);
+            var trainingData = mlContext.Data.LoadFromEnumerable(dataPoints);
+            var model = pipeline.Fit(trainingData);
+            var numOfSubParameters = (model.LastTransformer.Model as OneVersusAllModelParameters).SubModelParameters.Length;
+            Assert.Equal(numClasses, numOfSubParameters);
+
+            numClasses = 4;
+            dataPoints = GenerateRandomDataPoints(100, numClasses: numClasses);
+            trainingData = mlContext.Data.LoadFromEnumerable(dataPoints);
+            model = pipeline.Fit(trainingData);
+            numOfSubParameters = (model.LastTransformer.Model as OneVersusAllModelParameters).SubModelParameters.Length;
+            Assert.Equal(numClasses, numOfSubParameters);
+
+            numClasses = 2;
+            dataPoints = GenerateRandomDataPoints(100, numClasses: numClasses);
+            trainingData = mlContext.Data.LoadFromEnumerable(dataPoints);
+            model = pipeline.Fit(trainingData);
+            numOfSubParameters = (model.LastTransformer.Model as OneVersusAllModelParameters).SubModelParameters.Length;
+            Assert.Equal(numClasses, numOfSubParameters);
 
             Done();
         }
@@ -729,7 +826,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             Assert.Equal(row.CategoricalSplitFlags, tree.CategoricalSplitFlags[nodeId]);
             Assert.Equal(0, row.LeafValues);
             Assert.Equal(row.SplitGains, tree.SplitGains[nodeId]);
-            if(tree.GetCategoricalSplitFeaturesAt(nodeId).Count() > 0)
+            if (tree.GetCategoricalSplitFeaturesAt(nodeId).Count() > 0)
                 Assert.Equal(row.CategoricalSplitFeatures, tree.GetCategoricalSplitFeaturesAt(nodeId).ToArray());
             else
                 Assert.Null(row.CategoricalSplitFeatures);
@@ -810,7 +907,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         {
             var dataView = GetRegressionPipeline();
             var trainer = ML.Regression.Trainers.FastTree(
-                new FastTreeRegressionTrainer.Options { NumberOfTrees = 10, NumberOfThreads = 1, NumberOfLeaves = 5});
+                new FastTreeRegressionTrainer.Options { NumberOfTrees = 10, NumberOfThreads = 1, NumberOfLeaves = 5 });
 
             var transformer = trainer.Fit(dataView);
 
@@ -828,7 +925,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         {
             var dataView = GetRegressionPipeline();
             var trainer = ML.Regression.Trainers.FastForest(
-                new FastForestRegressionTrainer.Options { NumberOfTrees = 10, NumberOfThreads = 1, NumberOfLeaves = 5});
+                new FastForestRegressionTrainer.Options { NumberOfTrees = 10, NumberOfThreads = 1, NumberOfLeaves = 5 });
 
             var transformer = trainer.Fit(dataView);
 
@@ -846,7 +943,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         {
             var dataView = GetRegressionPipeline();
             var trainer = ML.Regression.Trainers.FastTreeTweedie(
-                new FastTreeTweedieTrainer.Options { NumberOfTrees = 10, NumberOfThreads = 1, NumberOfLeaves = 5});
+                new FastTreeTweedieTrainer.Options { NumberOfTrees = 10, NumberOfThreads = 1, NumberOfLeaves = 5 });
 
             var transformer = trainer.Fit(dataView);
 
@@ -863,8 +960,15 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         public void LightGbmRegressorTestSummary()
         {
             var dataView = GetRegressionPipeline();
+
+            // Attention: Do not set NumberOfThreads here, left this to use default value to avoid test crash.
+            // Details can be found here: https://github.com/dotnet/machinelearning/pull/4918
             var trainer = ML.Regression.Trainers.LightGbm(
-                new LightGbmRegressionTrainer.Options { NumberOfIterations = 10, NumberOfThreads = 1, NumberOfLeaves = 5});
+                new LightGbmRegressionTrainer.Options
+                {
+                    NumberOfIterations = 10,
+                    NumberOfLeaves = 5
+                });
 
             var transformer = trainer.Fit(dataView);
 
@@ -882,7 +986,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         {
             var (pipeline, dataView) = GetBinaryClassificationPipeline();
             var estimator = pipeline.Append(ML.BinaryClassification.Trainers.FastTree(
-                new FastTreeBinaryTrainer.Options { NumberOfTrees = 2, NumberOfThreads = 1, NumberOfLeaves = 5}));
+                new FastTreeBinaryTrainer.Options { NumberOfTrees = 2, NumberOfThreads = 1, NumberOfLeaves = 5 }));
 
             var transformer = estimator.Fit(dataView);
 
@@ -913,12 +1017,42 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             Done();
         }
 
+        [Fact]
+        public void FastTreeMultiClassificationCancellationTest()
+        {
+            // verify that FastForest can be canceled after training start.
+            // we need to create a new context for cancellation.
+            var context = new MLContext(seed: 1);
+            var (pipeline, dataView) = GetMulticlassPipeline();
+            var estimator = pipeline.Append(context.MulticlassClassification.Trainers.OneVersusAll(context.BinaryClassification.Trainers.FastTree()));
+
+            context.Log += (o, e) =>
+            {
+
+                if (e.Source.StartsWith("FastTreeTraining"))
+                {
+                    context.CancelExecution();
+                }
+            };
+
+            var action = () => estimator.Fit(dataView);
+            action.Should().Throw<OperationCanceledException>();
+        }
+
         [LightGBMFact]
         public void LightGbmBinaryClassificationTestSummary()
         {
             var (pipeline, dataView) = GetOneHotBinaryClassificationPipeline();
+
+            // Attention: Do not set NumberOfThreads here, left this to use default value to avoid test crash.
+            // Details can be found here: https://github.com/dotnet/machinelearning/pull/4918
             var trainer = pipeline.Append(ML.BinaryClassification.Trainers.LightGbm(
-                new LightGbmBinaryTrainer.Options { NumberOfIterations = 10, NumberOfThreads = 1, NumberOfLeaves = 5, UseCategoricalSplit = true }));
+                new LightGbmBinaryTrainer.Options
+                {
+                    NumberOfIterations = 10,
+                    NumberOfLeaves = 5,
+                    UseCategoricalSplit = true
+                }));
 
             var transformer = trainer.Fit(dataView);
 
@@ -929,6 +1063,62 @@ namespace Microsoft.ML.Tests.TrainerEstimators
 
             CheckSummary(modelParameters, trainedTreeEnsemble.Bias, trainedTreeEnsemble.TreeWeights, trainedTreeEnsemble.Trees);
             Done();
+        }
+
+        [LightGBMFact]
+        public void LightGbmBinaryClassificationCancellationTest()
+        {
+            var context = new MLContext(seed: 1);
+            context.Log += (o, e) =>
+            {
+                if (e.Message.Contains("LightGBM objective"))
+                {
+                    context.CancelExecution();
+                }
+            };
+
+            var (pipeline, dataView) = GetOneHotBinaryClassificationPipeline();
+
+            // Attention: Do not set NumberOfThreads here, left this to use default value to avoid test crash.
+            // Details can be found here: https://github.com/dotnet/machinelearning/pull/4918
+            var trainer = pipeline.Append(context.BinaryClassification.Trainers.LightGbm(
+                new LightGbmBinaryTrainer.Options
+                {
+                    NumberOfIterations = 1000,
+                    NumberOfLeaves = 5,
+                    UseCategoricalSplit = true
+                }));
+
+            var action = () => trainer.Fit(dataView);
+            action.Should().Throw<OperationCanceledException>();
+        }
+
+        [LightGBMFact]
+        public void LightGbmMultiClassificationCancellationTest()
+        {
+            var context = new MLContext(seed: 1);
+            context.Log += (o, e) =>
+            {
+                if (e.Message.Contains("LightGBM objective"))
+                {
+                    context.CancelExecution();
+                }
+            };
+
+            var (pipeline, dataView) = GetMulticlassPipeline();
+
+            // Attention: Do not set NumberOfThreads here, left this to use default value to avoid test crash.
+            // Details can be found here: https://github.com/dotnet/machinelearning/pull/4918
+            var trainer = pipeline.Append(context.MulticlassClassification.Trainers.LightGbm(
+                new LightGbmMulticlassTrainer.Options
+                {
+                    NumberOfIterations = 1000,
+                    NumberOfLeaves = 5,
+                    UseCategoricalSplit = true
+                }));
+
+            var action = () => trainer.Fit(dataView);
+            action.Should().Throw<OperationCanceledException>();
         }
     }
 }

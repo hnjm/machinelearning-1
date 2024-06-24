@@ -4,8 +4,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.ML;
 using Microsoft.ML.CommandLine;
@@ -194,10 +194,10 @@ namespace Microsoft.ML.Transforms.Image
         /// for all the pixels of the image. </param>
         /// <param name="scaleImage">Scale each pixel's color value by this amount.</param>
         /// <param name="offsetImage">Offset each pixel's color value by this amount.</param>
-        /// <param name="defaultAlpha">Default value for alpha color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Alpha"/>.</param>
-        /// <param name="defaultRed">Default value for red color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Red"/>.</param>
-        /// <param name="defaultGreen">Default value for grenn color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Green"/>.</param>
-        /// <param name="defaultBlue">Default value for blue color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Blue"/>.</param>
+        /// <param name="defaultAlpha">Default value for alpha color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Alpha"/>.</param>
+        /// <param name="defaultRed">Default value for red color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Red"/>.</param>
+        /// <param name="defaultGreen">Default value for green color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Green"/>.</param>
+        /// <param name="defaultBlue">Default value for blue color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Blue"/>.</param>
         internal VectorToImageConvertingTransformer(IHostEnvironment env, string outputColumnName,
             int imageHeight, int imageWidth,
             string inputColumnName = null,
@@ -335,14 +335,13 @@ namespace Microsoft.ML.Transforms.Image
                 var sourceItemType = sourceType.GetItemType();
                 if (sourceItemType == NumberDataViewType.Single || sourceItemType == NumberDataViewType.Double)
                     return GetterFromType<float>(NumberDataViewType.Single, input, iinfo, ex, needScale);
-                else
-                    if (sourceItemType == NumberDataViewType.Byte)
+                else if (sourceItemType == NumberDataViewType.Byte)
                     return GetterFromType<byte>(NumberDataViewType.Byte, input, iinfo, ex, false);
                 else
                     throw Contracts.Except("We only support float, double or byte arrays");
             }
 
-            private ValueGetter<Bitmap> GetterFromType<TValue>(PrimitiveDataViewType srcType, DataViewRow input, int iinfo,
+            private ValueGetter<MLImage> GetterFromType<TValue>(PrimitiveDataViewType srcType, DataViewRow input, int iinfo,
                 VectorToImageConvertingEstimator.ColumnOptions ex, bool needScale) where TValue : IConvertible
             {
                 Contracts.Assert(typeof(TValue) == srcType.RawType);
@@ -354,7 +353,7 @@ namespace Microsoft.ML.Transforms.Image
                 float scale = ex.ScaleImage;
 
                 return
-                    (ref Bitmap dst) =>
+                    (ref MLImage dst) =>
                     {
                         getSrc(ref src);
                         if (src.GetValues().Length == 0)
@@ -365,13 +364,14 @@ namespace Microsoft.ML.Transforms.Image
                         VBuffer<TValue> dense = default;
                         src.CopyToDense(ref dense);
                         var values = dense.GetValues();
-                        dst = new Bitmap(width, height);
-                        dst.SetResolution(width, height);
                         int cpix = height * width;
                         int position = 0;
                         ImagePixelExtractingEstimator.GetOrder(ex.Order, ex.Colors, out int a, out int r, out int b, out int g);
 
+                        byte[] imageData = new byte[width * height * 4]; // 4 for bgra data blue, green, red, and alpha.
+                        int ix = 0;
                         for (int y = 0; y < height; ++y)
+                        {
                             for (int x = 0; x < width; x++)
                             {
                                 float red = ex.DefaultRed;
@@ -398,20 +398,25 @@ namespace Microsoft.ML.Transforms.Image
                                     if (ex.Green) green = Convert.ToSingle(values[position + cpix * g]);
                                     if (ex.Blue) blue = Convert.ToSingle(values[position + cpix * b]);
                                 }
-                                Color pixel;
                                 if (!needScale)
-                                    pixel = Color.FromArgb((int)alpha, (int)red, (int)green, (int)blue);
+                                {
+                                    imageData[ix++] = (byte)blue;
+                                    imageData[ix++] = (byte)green;
+                                    imageData[ix++] = (byte)red;
+                                    imageData[ix++] = (byte)alpha;
+                                }
                                 else
                                 {
-                                    pixel = Color.FromArgb(
-                                        ex.Alpha ? (int)Math.Round(alpha * scale - offset) : 0,
-                                        (int)Math.Round(red * scale - offset),
-                                        (int)Math.Round(green * scale - offset),
-                                        (int)Math.Round(blue * scale - offset));
+                                    imageData[ix++] = (byte)Math.Round(blue * scale - offset);
+                                    imageData[ix++] = (byte)Math.Round(green * scale - offset);
+                                    imageData[ix++] = (byte)Math.Round(red * scale - offset);
+                                    imageData[ix++] = (byte)(ex.Alpha ? Math.Round(alpha * scale - offset) : 0);
                                 }
-                                dst.SetPixel(x, y, pixel);
-                                dst.Tag = nameof(VectorToImageConvertingTransformer);
                             }
+                        }
+
+                        dst = MLImage.CreateFromPixels(width, height, MLPixelFormat.Bgra32, imageData);
+                        dst.Tag = nameof(VectorToImageConvertingTransformer);
                     };
             }
 
@@ -433,8 +438,9 @@ namespace Microsoft.ML.Transforms.Image
     /// | -- | -- |
     /// | Does this estimator need to look at the data to train its parameters? | No |
     /// | Input column data type | Known-sized vector of <xref:System.Single>, <xref:System.Double> or <xref:System.Byte>. |
-    /// | Output column data type | <xref:System.Drawing.Bitmap> |
+    /// | Output column data type | <xref:Microsoft.ML.Data.MLImage> |
     /// | Required NuGet in addition to Microsoft.ML | Microsoft.ML.ImageAnalytics |
+    /// | Exportable to ONNX | No |
     ///
     /// The resulting <xref:Microsoft.ML.Transforms.Image.VectorToImageConvertingTransformer> creates a new column, named as specified in the output column name parameters, and
     /// creates image from the data in the input column to this new column.
@@ -546,7 +552,7 @@ namespace Microsoft.ML.Transforms.Image
                 planes = (planes & 0x05) + ((planes >> 1) & 0x05);
                 planes = (planes & 0x03) + ((planes >> 2) & 0x03);
                 Planes = (byte)planes;
-                Contracts.Assert(0 < Planes & Planes <= 4);
+                Contracts.Assert(0 < Planes && Planes <= 4);
 
                 if (ctx.Header.ModelVerWritten <= VectorToImageConvertingTransformer.BeforeOrderVersion)
                     Order = ImagePixelExtractingEstimator.ColorsOrder.ARGB;
@@ -592,10 +598,10 @@ namespace Microsoft.ML.Transforms.Image
             /// alpha, red, green, blue for all the pixels of the image. </param>
             /// <param name="scaleImage">The values are scaled by this value before being converted to pixels. Applied to vector value before <paramref name="offsetImage"/></param>
             /// <param name="offsetImage">The offset is subtracted before converting the values to pixels. Applied to vector value after <paramref name="scaleImage"/>.</param>
-            /// <param name="defaultAlpha">Default value for alpha color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Alpha"/>.</param>
-            /// <param name="defaultRed">Default value for red color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Red"/>.</param>
-            /// <param name="defaultGreen">Default value for grenn color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Green"/>.</param>
-            /// <param name="defaultBlue">Default value for blue color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Blue"/>.</param>
+            /// <param name="defaultAlpha">Default value for alpha color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Alpha"/>.</param>
+            /// <param name="defaultRed">Default value for red color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Red"/>.</param>
+            /// <param name="defaultGreen">Default value for green color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Green"/>.</param>
+            /// <param name="defaultBlue">Default value for blue color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Blue"/>.</param>
             public ColumnOptions(string name,
                 int imageHeight, int imageWidth,
                 string inputColumnName = null,
@@ -696,10 +702,10 @@ namespace Microsoft.ML.Transforms.Image
         /// alpha, red, green, blue for all the pixels of the image. </param>
         /// <param name="scaleImage">The values are scaled by this value before being converted to pixels. Applied to vector value before <paramref name="offsetImage"/>.</param>
         /// <param name="offsetImage">The offset is subtracted before converting the values to pixels. Applied to vector value after <paramref name="scaleImage"/>.</param>
-        /// <param name="defaultAlpha">Default value for alpha color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Alpha"/>.</param>
-        /// <param name="defaultRed">Default value for red color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Red"/>.</param>
-        /// <param name="defaultGreen">Default value for grenn color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Green"/>.</param>
-        /// <param name="defaultBlue">Default value for blue color, would be overriden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Blue"/>.</param>
+        /// <param name="defaultAlpha">Default value for alpha color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Alpha"/>.</param>
+        /// <param name="defaultRed">Default value for red color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Red"/>.</param>
+        /// <param name="defaultGreen">Default value for green color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Green"/>.</param>
+        /// <param name="defaultBlue">Default value for blue color, would be overridden if <paramref name="colorsPresent"/> contains <see cref="ImagePixelExtractingEstimator.ColorBits.Blue"/>.</param>
         [BestFriend]
         internal VectorToImageConvertingEstimator(IHostEnvironment env,
             int imageHeight,

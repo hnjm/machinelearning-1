@@ -1,11 +1,12 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.ML.Data;
+using Microsoft.ML.Internal.Utilities;
+using Microsoft.ML.Runtime;
 
 namespace Microsoft.ML.AutoML
 {
@@ -17,10 +18,11 @@ namespace Microsoft.ML.AutoML
             IEnumerable<PipelineScore> history,
             DatasetColumnInfo[] columns,
             TaskKind task,
+            IChannel logger,
             bool isMaximizingMetric = true)
         {
             var inferredHistory = history.Select(r => SuggestedPipelineRunDetail.FromPipelineRunResult(context, r));
-            var nextInferredPipeline = GetNextInferredPipeline(context, inferredHistory, columns, task, isMaximizingMetric, CacheBeforeTrainer.Auto);
+            var nextInferredPipeline = GetNextInferredPipeline(context, inferredHistory, columns, task, isMaximizingMetric, CacheBeforeTrainer.Auto, logger);
             return nextInferredPipeline?.ToPipeline();
         }
 
@@ -30,10 +32,11 @@ namespace Microsoft.ML.AutoML
             TaskKind task,
             bool isMaximizingMetric,
             CacheBeforeTrainer cacheBeforeTrainer,
-            IEnumerable<TrainerName> trainerWhitelist = null)
+            IChannel logger,
+            IEnumerable<TrainerName> trainerAllowList = null)
         {
             var availableTrainers = RecipeInference.AllowedTrainers(context, task,
-                ColumnInformationUtil.BuildColumnInfo(columns), trainerWhitelist);
+                ColumnInformationUtil.BuildColumnInfo(columns), trainerAllowList);
             var transforms = TransformInferenceApi.InferTransforms(context, task, columns).ToList();
             var transformsPostTrainer = TransformInferenceApi.InferTransformsPostTrainer(context, task, columns).ToList();
 
@@ -49,7 +52,7 @@ namespace Microsoft.ML.AutoML
             // sort top trainers by # of times they've been run, from lowest to highest
             var orderedTopTrainers = OrderTrainersByNumTrials(history, topTrainers);
 
-            // keep as hashset of previously visited pipelines
+            // keep as hash set of previously visited pipelines
             var visitedPipelines = new HashSet<SuggestedPipeline>(history.Select(h => h.Pipeline));
 
             // iterate over top trainers (from least run to most run),
@@ -64,7 +67,7 @@ namespace Microsoft.ML.AutoML
                 do
                 {
                     // sample new hyperparameters for the learner
-                    if (!SampleHyperparameters(context, newTrainer, history, isMaximizingMetric))
+                    if (!SampleHyperparameters(context, newTrainer, history, isMaximizingMetric, logger))
                     {
                         // if unable to sample new hyperparameters for the learner
                         // (ie SMAC returned 0 suggestions), break
@@ -92,11 +95,11 @@ namespace Microsoft.ML.AutoML
             bool isMaximizingMetric)
         {
             // narrow history to first stage runs that succeeded
-            history = history.Take(availableTrainers.Count()).Where(x => x.RunSucceded);
+            history = history.Take(availableTrainers.Count()).Where(x => x.RunSucceeded);
 
             history = history.GroupBy(r => r.Pipeline.Trainer.TrainerName).Select(g => g.First());
             IEnumerable<SuggestedPipelineRunDetail> sortedHistory = history.OrderBy(r => r.Score);
-            if(isMaximizingMetric)
+            if (isMaximizingMetric)
             {
                 sortedHistory = sortedHistory.Reverse();
             }
@@ -186,32 +189,44 @@ namespace Microsoft.ML.AutoML
 
         /// <summary>
         /// Samples new hyperparameters for the trainer, and sets them.
-        /// Returns true if success (new hyperparams were suggested and set). Else, returns false.
+        /// Returns true if success (new hyperparameters were suggested and set). Else, returns false.
         /// </summary>
-        private static bool SampleHyperparameters(MLContext context, SuggestedTrainer trainer, IEnumerable<SuggestedPipelineRunDetail> history, bool isMaximizingMetric)
+        private static bool SampleHyperparameters(MLContext context, SuggestedTrainer trainer,
+            IEnumerable<SuggestedPipelineRunDetail> history, bool isMaximizingMetric, IChannel logger)
         {
-            var sps = ConvertToValueGenerators(trainer.SweepParams);
-            var sweeper = new SmacSweeper(context,
-                new SmacSweeper.Arguments
-                {
-                    SweptParameters = sps
-                });
-
-            IEnumerable<SuggestedPipelineRunDetail> historyToUse = history
-                .Where(r => r.RunSucceded && r.Pipeline.Trainer.TrainerName == trainer.TrainerName && r.Pipeline.Trainer.HyperParamSet != null && r.Pipeline.Trainer.HyperParamSet.Any());
-
-            // get new set of hyperparameter values
-            var proposedParamSet = sweeper.ProposeSweeps(1, historyToUse.Select(h => h.ToRunResult(isMaximizingMetric))).First();
-            if(!proposedParamSet.Any())
+            try
             {
-                return false;
+                var sps = ConvertToValueGenerators(trainer.SweepParams);
+                var sweeper = new SmacSweeper(context,
+                    new SmacSweeper.Arguments
+                    {
+                        SweptParameters = sps
+                    });
+
+                IEnumerable<SuggestedPipelineRunDetail> historyToUse = history
+                    .Where(r => r.RunSucceeded && r.Pipeline.Trainer.TrainerName == trainer.TrainerName &&
+                                r.Pipeline.Trainer.HyperParamSet != null &&
+                                r.Pipeline.Trainer.HyperParamSet.Any() &&
+                                FloatUtils.IsFinite(r.Score));
+
+                // get new set of hyperparameter values
+                var proposedParamSet = sweeper.ProposeSweeps(1, historyToUse.Select(h => h.ToRunResult(isMaximizingMetric))).FirstOrDefault();
+                if (!proposedParamSet.Any())
+                {
+                    return false;
+                }
+
+                // associate proposed parameter set with trainer, so that smart hyperparameter
+                // sweepers (like KDO) can map them back.
+                trainer.SetHyperparamValues(proposedParamSet);
+
+                return true;
             }
-
-            // associate proposed param set with trainer, so that smart hyperparam
-            // sweepers (like KDO) can map them back.
-            trainer.SetHyperparamValues(proposedParamSet);
-
-            return true;
+            catch (Exception ex)
+            {
+                logger.Error($"SampleHyperparameters failed with exception: {ex}");
+                throw;
+            }
         }
     }
 }

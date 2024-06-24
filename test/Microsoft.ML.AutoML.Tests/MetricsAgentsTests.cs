@@ -4,13 +4,18 @@
 
 using System;
 using Microsoft.ML.Data;
+using Microsoft.ML.TestFramework;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace Microsoft.ML.AutoML.Test
 {
-    public class MetricsAgentsTests
+    public class MetricsAgentsTests : BaseTestClass
     {
+        public MetricsAgentsTests(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         public void BinaryMetricsGetScoreTest()
         {
@@ -56,7 +61,7 @@ namespace Microsoft.ML.AutoML.Test
         [Fact]
         public void MulticlassMetricsGetScoreTest()
         {
-            var metrics = MetricsUtil.CreateMulticlassClassificationMetrics(0.1, 0.2, 0.3, 0.4, 0, 0.5, new double[] {});
+            var metrics = MetricsUtil.CreateMulticlassClassificationMetrics(0.1, 0.2, 0.3, 0.4, 0, new double[] { 0.5 }, new double[] { });
             Assert.Equal(0.1, GetScore(metrics, MulticlassClassificationMetric.MicroAccuracy));
             Assert.Equal(0.2, GetScore(metrics, MulticlassClassificationMetric.MacroAccuracy));
             Assert.Equal(0.3, GetScore(metrics, MulticlassClassificationMetric.LogLoss));
@@ -67,7 +72,7 @@ namespace Microsoft.ML.AutoML.Test
         [Fact]
         public void MulticlassMetricsNonPerfectTest()
         {
-            var metrics = MetricsUtil.CreateMulticlassClassificationMetrics(0.1, 0.2, 0.3, 0.4, 0, 0.5, new double[] { });
+            var metrics = MetricsUtil.CreateMulticlassClassificationMetrics(0.1, 0.2, 0.3, 0.4, 0, new double[] { 0.5 }, new double[] { });
             Assert.False(IsPerfectModel(metrics, MulticlassClassificationMetric.MacroAccuracy));
             Assert.False(IsPerfectModel(metrics, MulticlassClassificationMetric.MicroAccuracy));
             Assert.False(IsPerfectModel(metrics, MulticlassClassificationMetric.LogLoss));
@@ -78,7 +83,7 @@ namespace Microsoft.ML.AutoML.Test
         [Fact]
         public void MulticlassMetricsPerfectTest()
         {
-            var metrics = MetricsUtil.CreateMulticlassClassificationMetrics(1, 1, 0, 1, 0, 1, new double[] { });
+            var metrics = MetricsUtil.CreateMulticlassClassificationMetrics(1, 1, 0, 1, 0, new double[] { 1 }, new double[] { });
             Assert.True(IsPerfectModel(metrics, MulticlassClassificationMetric.MicroAccuracy));
             Assert.True(IsPerfectModel(metrics, MulticlassClassificationMetric.MacroAccuracy));
             Assert.True(IsPerfectModel(metrics, MulticlassClassificationMetric.LogLoss));
@@ -117,11 +122,47 @@ namespace Microsoft.ML.AutoML.Test
         }
 
         [Fact]
+        public void RankingMetricsGetScoreTest()
+        {
+            double[] ndcg = { 0.2, 0.3, 0.4 };
+            double[] dcg = { 0.2, 0.3, 0.4 };
+            var metrics = MetricsUtil.CreateRankingMetrics(dcg, ndcg);
+            Assert.Equal(0.4, GetScore(metrics, RankingMetric.Dcg, 3));
+            Assert.Equal(0.4, GetScore(metrics, RankingMetric.Ndcg, 3));
+
+            double[] largeNdcg = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95 };
+            double[] largeDcg = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95 };
+            metrics = MetricsUtil.CreateRankingMetrics(largeDcg, largeNdcg);
+            Assert.Equal(0.3, GetScore(metrics, RankingMetric.Dcg, 3));
+            Assert.Equal(0.3, GetScore(metrics, RankingMetric.Ndcg, 3));
+        }
+
+        [Fact]
+        public void RankingMetricsNonPerfectTest()
+        {
+            double[] ndcg = { 0.2, 0.3, 0.4 };
+            double[] dcg = { 0.2, 0.3, 0.4 };
+            var metrics = MetricsUtil.CreateRankingMetrics(dcg, ndcg);
+            Assert.False(IsPerfectModel(metrics, RankingMetric.Dcg, 3));
+            Assert.False(IsPerfectModel(metrics, RankingMetric.Ndcg, 3));
+        }
+
+        [Fact]
+        public void RankingMetricsPerfectTest()
+        {
+            double[] ndcg = { 0.2, 0.3, 1 };
+            double[] dcg = { 0.2, 0.3, 1 };
+            var metrics = MetricsUtil.CreateRankingMetrics(dcg, ndcg);
+            Assert.False(IsPerfectModel(metrics, RankingMetric.Dcg, 3)); //REVIEW: No true Perfect model
+            Assert.True(IsPerfectModel(metrics, RankingMetric.Ndcg, 3));
+        }
+
+        [Fact]
         public void ThrowNotSupportedMetricException()
         {
             var ex = MetricsAgentUtil.BuildMetricNotSupportedException(BinaryClassificationMetric.Accuracy);
             Assert.Equal(typeof(NotSupportedException), ex.GetType());
-        }        
+        }
 
         private static double GetScore(BinaryClassificationMetrics metrics, BinaryClassificationMetric metric)
         {
@@ -136,6 +177,11 @@ namespace Microsoft.ML.AutoML.Test
         private static double GetScore(RegressionMetrics metrics, RegressionMetric metric)
         {
             return new RegressionMetricsAgent(null, metric).GetScore(metrics);
+        }
+
+        private static double GetScore(RankingMetrics metrics, RankingMetric metric, uint dcgTruncationLevel)
+        {
+            return new RankingMetricsAgent(null, metric, dcgTruncationLevel).GetScore(metrics);
         }
 
         private static bool IsPerfectModel(BinaryClassificationMetrics metrics, BinaryClassificationMetric metric)
@@ -153,6 +199,12 @@ namespace Microsoft.ML.AutoML.Test
         private static bool IsPerfectModel(RegressionMetrics metrics, RegressionMetric metric)
         {
             var metricsAgent = new RegressionMetricsAgent(null, metric);
+            return IsPerfectModel(metricsAgent, metrics);
+        }
+
+        private static bool IsPerfectModel(RankingMetrics metrics, RankingMetric metric, uint dcgTruncationLevel)
+        {
+            var metricsAgent = new RankingMetricsAgent(null, metric, dcgTruncationLevel);
             return IsPerfectModel(metricsAgent, metrics);
         }
 

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -11,7 +11,7 @@ namespace Microsoft.ML.Data.IO
     /// A value codec encapsulates implementations capable of writing and reading data of some
     /// type to and from streams. The idea is that one creates a codec using <c>TryGetCodec</c>
     /// on the appropriate <c>ColumnType</c>, then opens multiple writers to write blocks of data
-    /// to some stream. The idea is that each writer or reader is called on some "managable chunk"
+    /// to some stream. The idea is that each writer or reader is called on some "manageable chunk"
     /// of data.
     ///
     /// Codecs should be thread safe, though the readers and writers they spawn do not need to

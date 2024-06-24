@@ -50,7 +50,7 @@ namespace Microsoft.ML.Data
     /// A chain of transformers (possibly empty) that end with a <typeparamref name="TLastTransformer"/>.
     /// For an empty chain, <typeparamref name="TLastTransformer"/> is always <see cref="ITransformer"/>.
     /// </summary>
-    public sealed class TransformerChain<TLastTransformer> : ITransformer, IEnumerable<ITransformer>, ITransformerChainAccessor
+    public sealed class TransformerChain<TLastTransformer> : ITransformer, IEnumerable<ITransformer>, ITransformerChainAccessor, IDisposable
     where TLastTransformer : class, ITransformer
     {
         private readonly ITransformer[] _transformers;
@@ -120,25 +120,45 @@ namespace Microsoft.ML.Data
 
         public DataViewSchema GetOutputSchema(DataViewSchema inputSchema)
         {
+            // Default to only scoring scope.
+            return GetOutputSchema(inputSchema, TransformerScope.Scoring);
+        }
+
+        public DataViewSchema GetOutputSchema(DataViewSchema inputSchema, TransformerScope scope)
+        {
             Contracts.CheckValue(inputSchema, nameof(inputSchema));
 
+            var chain = GetModelFor(scope);
+
             var s = inputSchema;
-            foreach (var xf in _transformers)
+            foreach (var xf in chain)
                 s = xf.GetOutputSchema(s);
             return s;
         }
 
         public IDataView Transform(IDataView input)
         {
+            // Default to only scoring scope.
+            return Transform(input, TransformerScope.Scoring);
+        }
+
+        public IDataView Transform(IDataView input, TransformerScope scope)
+        {
             Contracts.CheckValue(input, nameof(input));
+
+            // Default to all scopes, but still allow for smaller scopes.
+            var chain = GetModelFor(scope);
 
             // Trigger schema propagation prior to transforming.
             // REVIEW: does this actually constitute 'early warning', given that Transform call is lazy anyway?
-            GetOutputSchema(input.Schema);
+            chain.GetOutputSchema(input.Schema);
 
             var dv = input;
-            foreach (var xf in _transformers)
-                dv = xf.Transform(dv);
+            foreach (var transformer in chain)
+            {
+                dv = transformer.Transform(dv);
+            }
+
             return dv;
         }
 
@@ -232,6 +252,21 @@ namespace Microsoft.ML.Data
             }
             return new CompositeRowToRowMapper(inputSchema, mappers);
         }
+
+        #region IDisposable Support
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            foreach (var transformer in _transformers)
+                (transformer as IDisposable)?.Dispose();
+
+            _disposed = true;
+        }
+        #endregion
     }
 
     /// <summary>

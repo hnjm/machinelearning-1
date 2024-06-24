@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -19,7 +19,7 @@ namespace Microsoft.ML.Trainers.FastTree
     {
         private readonly DenseIntArray _values;
         private readonly int _length;
-        private byte[] _deltas;
+        private readonly byte[] _deltas;
         private readonly int _deltasActualLength;
 
         public DeltaRepeatIntArray(int length, IntArrayBits bitsPerItem, IEnumerable<int> values)
@@ -91,7 +91,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// Writes a binary representation of this class to a byte buffer, at a given position.
         /// The position is incremented to the end of the representation
         /// </summary>
-        /// <param name="buffer">a byte array where the binary represenaion is written</param>
+        /// <param name="buffer">a byte array where the binary representation is written</param>
         /// <param name="position">the position in the byte array</param>
         public override void ToByteArray(byte[] buffer, ref int position)
         {

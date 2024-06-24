@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -158,6 +158,9 @@ namespace Microsoft.ML.Data
 
         private abstract class CursorBase : RootCursorBase
         {
+            private static readonly FuncInstanceMethodInfo1<CursorBase, int, Delegate> _createTypedGetterMethodInfo
+                = FuncInstanceMethodInfo1<CursorBase, int, Delegate>.Create(target => target.CreateTypedGetter<int>);
+
             protected readonly IDataView[] Sources;
             protected readonly Delegate[] Getters;
 
@@ -178,9 +181,7 @@ namespace Microsoft.ML.Data
             {
                 DataViewType colType = Schema[col].Type;
                 Ch.AssertValue(colType);
-                Func<int, Delegate> creator = CreateTypedGetter<int>;
-                var typedCreator = creator.GetMethodInfo().GetGenericMethodDefinition().MakeGenericMethod(colType.RawType);
-                return (Delegate)typedCreator.Invoke(this, new object[] { col });
+                return Utils.MarshalInvoke(_createTypedGetterMethodInfo, this, colType.RawType, col);
             }
 
             protected abstract ValueGetter<TValue> CreateTypedGetter<TValue>(int col);
@@ -189,9 +190,12 @@ namespace Microsoft.ML.Data
             {
                 Ch.CheckParam(column.Index <= Getters.Length && IsColumnActive(column), nameof(column), "requested column not active");
 
-                if (!(Getters[column.Index] is ValueGetter<TValue>))
-                    throw Ch.Except($"Invalid TValue in GetGetter: '{typeof(TValue)}'");
-                return Getters[column.Index] as ValueGetter<TValue>;
+                var originGetter = Getters[column.Index];
+                var getter = originGetter as ValueGetter<TValue>;
+                if (getter == null)
+                    throw Ch.Except($"Invalid TValue in GetGetter: '{typeof(TValue)}', " +
+                        $"expected type: '{originGetter.GetType().GetGenericArguments().First()}'.");
+                return getter;
             }
 
             /// <summary>
@@ -221,7 +225,7 @@ namespace Microsoft.ML.Data
                 _currentCursor = Sources[_currentSourceIndex].GetRowCursor(columnsNeeded);
                 _currentIdGetter = _currentCursor.GetIdGetter();
 
-                foreach(var col in columnsNeeded)
+                foreach (var col in columnsNeeded)
                     Getters[col.Index] = CreateGetter(col.Index);
             }
 
@@ -323,7 +327,7 @@ namespace Microsoft.ML.Data
                 _sampler = new MultinomialWithoutReplacementSampler(Ch, counts, rand);
                 _currentSourceIndex = -1;
 
-                foreach(var col in columnsNeeded)
+                foreach (var col in columnsNeeded)
                     Getters[col.Index] = CreateGetter(col.Index);
             }
 

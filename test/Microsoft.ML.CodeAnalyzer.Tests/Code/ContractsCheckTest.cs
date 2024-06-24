@@ -10,16 +10,16 @@ using Microsoft.CodeAnalysis.Testing;
 using Microsoft.ML.CodeAnalyzer.Tests.Helpers;
 using Xunit;
 using VerifyCS = Microsoft.ML.CodeAnalyzer.Tests.Helpers.CSharpCodeFixVerifier<
-    Microsoft.ML.InternalCodeAnalyzer.ContractsCheckAnalyzer,
-    Microsoft.ML.InternalCodeAnalyzer.ContractsCheckNameofFixProvider>;
+Microsoft.ML.InternalCodeAnalyzer.ContractsCheckAnalyzer,
+Microsoft.ML.InternalCodeAnalyzer.ContractsCheckNameofFixProvider>;
 
 namespace Microsoft.ML.InternalCodeAnalyzer.Tests
 {
     public sealed class ContractsCheckTest
     {
-        private readonly Lazy<string> Source = TestUtils.LazySource("ContractsCheckResource.cs");
-        private readonly Lazy<string> SourceContracts = TestUtils.LazySource("Contracts.cs");
-        private readonly Lazy<string> SourceFriend = TestUtils.LazySource("BestFriendAttribute.cs");
+        private readonly Lazy<string> _source = TestUtils.LazySource("ContractsCheckResource.cs");
+        private readonly Lazy<string> _sourceContracts = TestUtils.LazySource("Contracts.cs");
+        private readonly Lazy<string> _sourceFriend = TestUtils.LazySource("BestFriendAttribute.cs");
 
         [Fact]
         public async Task ContractsCheck()
@@ -39,8 +39,8 @@ namespace Microsoft.ML.InternalCodeAnalyzer.Tests
                 VerifyCS.Diagnostic(ContractsCheckAnalyzer.SimpleMessageDiagnostic.Rule).WithLocation(basis + 32, 35).WithArguments("Check", "\"Less fine: \" + env.GetType().Name"),
                 VerifyCS.Diagnostic(ContractsCheckAnalyzer.NameofDiagnostic.Rule).WithLocation(basis + 34, 17).WithArguments("CheckUserArg", "name", "\"p\""),
                 VerifyCS.Diagnostic(ContractsCheckAnalyzer.DecodeMessageWithLoadContextDiagnostic.Rule).WithLocation(basis + 39, 41).WithArguments("CheckDecode", "\"This message is suspicious\""),
-                new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithLocation("Test1.cs", 752, 24).WithMessage("'ICancelable' is inaccessible due to its protection level"),
-                new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithLocation("Test1.cs", 752, 67).WithMessage("'ICancelable.IsCanceled' is inaccessible due to its protection level"),
+                new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithSpan("/0/Test1.cs", 752, 24, 752, 35).WithMessage("'ICancelable' is inaccessible due to its protection level"),
+                new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithSpan("/0/Test1.cs", 752, 67, 752, 77).WithMessage("'ICancelable.IsCanceled' is inaccessible due to its protection level"),
             };
 
             var test = new VerifyCS.Test
@@ -50,11 +50,10 @@ namespace Microsoft.ML.InternalCodeAnalyzer.Tests
                 {
                     Sources =
                     {
-                        Source.Value,
-                        SourceContracts.Value,
-                        SourceFriend.Value,
+                        _source.Value,
+                        _sourceContracts.Value,
+                        _sourceFriend.Value,
                     },
-                    AdditionalReferences = { AdditionalMetadataReferences.RefFromType<Memory<int>>() },
                 }
             };
 
@@ -87,13 +86,13 @@ namespace TestNamespace
             await VerifyCS.VerifyAnalyzerAsync(decoySource);
         }
 
-        private readonly Lazy<string> SourcePreFix = TestUtils.LazySource("ContractsCheckBeforeFix.cs");
-        private readonly Lazy<string> SourcePostFix = TestUtils.LazySource("ContractsCheckAfterFix.cs");
+        private readonly Lazy<string> _sourcePreFix = TestUtils.LazySource("ContractsCheckBeforeFix.cs");
+        private readonly Lazy<string> _sourcePostFix = TestUtils.LazySource("ContractsCheckAfterFix.cs");
 
-        private readonly Lazy<string> SourceArgAttr = TestUtils.LazySource("ArgumentAttribute.cs");
-        private readonly Lazy<string> SourceArgType = TestUtils.LazySource("ArgumentType.cs");
-        private readonly Lazy<string> SourceBestAttr = TestUtils.LazySource("BestFriendAttribute.cs");
-        private readonly Lazy<string> SourceDefArgAttr = TestUtils.LazySource("DefaultArgumentAttribute.cs");
+        private readonly Lazy<string> _sourceArgAttr = TestUtils.LazySource("ArgumentAttribute.cs");
+        private readonly Lazy<string> _sourceArgType = TestUtils.LazySource("ArgumentType.cs");
+        private readonly Lazy<string> _sourceBestAttr = TestUtils.LazySource("BestFriendAttribute.cs");
+        private readonly Lazy<string> _sourceDefArgAttr = TestUtils.LazySource("DefaultArgumentAttribute.cs");
 
         [Fact]
         public async Task ContractsCheckFix()
@@ -105,12 +104,12 @@ namespace TestNamespace
                 {
                     Sources =
                     {
-                        SourcePreFix.Value,
-                        SourceContracts.Value,
-                        SourceArgAttr.Value,
-                        SourceArgType.Value,
-                        SourceBestAttr.Value,
-                        SourceDefArgAttr.Value,
+                        _sourcePreFix.Value,
+                        _sourceContracts.Value,
+                        _sourceArgAttr.Value,
+                        _sourceArgType.Value,
+                        _sourceBestAttr.Value,
+                        _sourceDefArgAttr.Value,
                     },
                     ExpectedDiagnostics =
                     {
@@ -127,30 +126,29 @@ namespace TestNamespace
                         VerifyCS.Diagnostic(ContractsCheckAnalyzer.NameofDiagnostic.Rule).WithLocation(23, 39).WithArguments("CheckValue", "paramName", "\"noMatch\""),
                         VerifyCS.Diagnostic(ContractsCheckAnalyzer.NameofDiagnostic.Rule).WithLocation(24, 53).WithArguments("CheckUserArg", "name", "\"chumble\""),
                         VerifyCS.Diagnostic(ContractsCheckAnalyzer.NameofDiagnostic.Rule).WithLocation(25, 53).WithArguments("CheckUserArg", "name", "\"sp\""),
-                        new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithLocation("Test1.cs", 752, 24).WithMessage("'ICancelable' is inaccessible due to its protection level"),
-                        new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithLocation("Test1.cs", 752, 67).WithMessage("'ICancelable.IsCanceled' is inaccessible due to its protection level"),
-                        new DiagnosticResult("CS1503", DiagnosticSeverity.Error).WithLocation("Test1.cs", 753, 91).WithMessage("Argument 2: cannot convert from 'Microsoft.ML.Runtime.IHostEnvironment' to 'Microsoft.ML.Runtime.IExceptionContext'"),
+                        new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithSpan("/0/Test1.cs", 752, 24, 752, 35).WithMessage("'ICancelable' is inaccessible due to its protection level"),
+                        new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithSpan("/0/Test1.cs", 752, 67, 752, 77).WithMessage("'ICancelable.IsCanceled' is inaccessible due to its protection level"),
+                        new DiagnosticResult("CS1503", DiagnosticSeverity.Error).WithSpan("/0/Test1.cs", 753, 90, 753, 93).WithMessage("Argument 2: cannot convert from 'Microsoft.ML.Runtime.IHostEnvironment' to 'Microsoft.ML.Runtime.IExceptionContext'"),
                     },
-                    AdditionalReferences = { AdditionalMetadataReferences.RefFromType<Memory<int>>() },
                 },
                 FixedState =
                 {
                     Sources =
                     {
-                        SourcePostFix.Value,
-                        SourceContracts.Value,
-                        SourceArgAttr.Value,
-                        SourceArgType.Value,
-                        SourceBestAttr.Value,
-                        SourceDefArgAttr.Value,
+                        _sourcePostFix.Value,
+                        _sourceContracts.Value,
+                        _sourceArgAttr.Value,
+                        _sourceArgType.Value,
+                        _sourceBestAttr.Value,
+                        _sourceDefArgAttr.Value,
                     },
                     ExpectedDiagnostics =
                     {
                         VerifyCS.Diagnostic(ContractsCheckAnalyzer.ExceptionDiagnostic.Rule).WithLocation(9, 43).WithArguments("ExceptParam"),
                         VerifyCS.Diagnostic(ContractsCheckAnalyzer.NameofDiagnostic.Rule).WithLocation(23, 39).WithArguments("CheckValue", "paramName", "\"noMatch\""),
-                        new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithLocation("Test1.cs", 752, 24).WithMessage("'ICancelable' is inaccessible due to its protection level"),
-                        new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithLocation("Test1.cs", 752, 67).WithMessage("'ICancelable.IsCanceled' is inaccessible due to its protection level"),
-                        new DiagnosticResult("CS1503", DiagnosticSeverity.Error).WithLocation("Test1.cs", 753, 91).WithMessage("Argument 2: cannot convert from 'Microsoft.ML.Runtime.IHostEnvironment' to 'Microsoft.ML.Runtime.IExceptionContext'"),
+                        new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithSpan("/0/Test1.cs", 752, 24, 752, 35).WithMessage("'ICancelable' is inaccessible due to its protection level"),
+                        new DiagnosticResult("CS0122", DiagnosticSeverity.Error).WithSpan("/0/Test1.cs", 752, 67, 752, 77).WithMessage("'ICancelable.IsCanceled' is inaccessible due to its protection level"),
+                        new DiagnosticResult("CS1503", DiagnosticSeverity.Error).WithSpan("/0/Test1.cs", 753, 90, 753, 93).WithMessage("Argument 2: cannot convert from 'Microsoft.ML.Runtime.IHostEnvironment' to 'Microsoft.ML.Runtime.IExceptionContext'"),
                     },
                 },
             };

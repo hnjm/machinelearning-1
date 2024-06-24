@@ -8,28 +8,53 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
-using System.Threading;
+using System.Net.Http;
+using System.Threading.Tasks;
 using Microsoft.ML.Data;
+using Microsoft.ML.TestFrameworkCommon;
 
 namespace Microsoft.ML.AutoML.Test
 {
     internal static class DatasetUtil
     {
         public const string UciAdultLabel = DefaultColumnNames.Label;
+        public const string TaxiFareLabel = "fare_amount";
         public const string TrivialMulticlassDatasetLabel = "Target";
         public const string MlNetGeneratedRegressionLabel = "target";
+        public const string NewspaperChurnLabel = "Subscriber";
         public const int IrisDatasetLabelColIndex = 0;
 
         public static string TrivialMulticlassDatasetPath = Path.Combine("TestData", "TrivialMulticlassDataset.txt");
 
         private static IDataView _uciAdultDataView;
 
+        private static IDataView _taxiFareTrainDataView;
+
+        private static IDataView _taxiFareTestDataView;
+
+        private static IDataView _irisDataView;
+
+        private static IDataView _newspaperChurnDataView;
+
+        public static string GetUciAdultDataset() => GetDataPath("adult.tiny.with-schema.txt");
+
+        public static string GetMlNetGeneratedRegressionDataset() => GetDataPath("generated_regression_dataset.csv");
+
+        public static string GetIrisDataset() => GetDataPath("iris.txt");
+
+        public static string GetMLSRDataset() => GetDataPath("MSLRWeb1K-tiny.tsv");
+
+        public static string GetDataPath(string fileName)
+        {
+            return Path.Combine(TestCommon.GetRepoRoot(), "test", "data", fileName);
+        }
+
         public static IDataView GetUciAdultDataView()
         {
-            if(_uciAdultDataView == null)
+            if (_uciAdultDataView == null)
             {
-                var context = new MLContext();
-                var uciAdultDataFile = DownloadUciAdultDataset();
+                var context = new MLContext(1);
+                var uciAdultDataFile = GetUciAdultDataset();
                 var columnInferenceResult = context.Auto().InferColumns(uciAdultDataFile, UciAdultLabel);
                 var textLoader = context.Data.CreateTextLoader(columnInferenceResult.TextLoaderOptions);
                 _uciAdultDataView = textLoader.Load(uciAdultDataFile);
@@ -37,52 +62,66 @@ namespace Microsoft.ML.AutoML.Test
             return _uciAdultDataView;
         }
 
-        // downloads the UCI Adult dataset from the ML.Net repo
-        public static string DownloadUciAdultDataset() =>
-            DownloadIfNotExists("https://raw.githubusercontent.com/dotnet/machinelearning/f0e639af5ffdc839aae8e65d19b5a9a1f0db634a/test/data/adult.tiny.with-schema.txt", "uciadult.dataset");
-
-        public static string DownloadMlNetGeneratedRegressionDataset() =>
-            DownloadIfNotExists("https://raw.githubusercontent.com/dotnet/machinelearning/e78971ea6fd736038b4c355b840e5cbabae8cb55/test/data/generated_regression_dataset.csv", "mlnet_generated_regression.dataset");
-
-        public static string DownloadIrisDataset() =>
-            DownloadIfNotExists("https://raw.githubusercontent.com/dotnet/machinelearning/54596ac/test/data/iris.txt", "iris.dataset");
-
-        private static string DownloadIfNotExists(string baseGitPath, string dataFile)
+        public static IDataView GetIrisDataView()
         {
-            foreach (var nextIteration in Enumerable.Range(0, 10))
+            if (_irisDataView == null)
             {
-                // if file doesn't already exist, download it
-                if (!File.Exists(dataFile))
-                {
-                    var tempFile = Path.GetTempFileName();
+                var context = new MLContext(1);
+                var dataFile = GetIrisDataset();
+                var columnInferenceResult = context.Auto().InferColumns(dataFile, 0, groupColumns: false);
+                var textLoader = context.Data.CreateTextLoader(columnInferenceResult.TextLoaderOptions);
+                _irisDataView = textLoader.Load(dataFile);
+            }
+            return _irisDataView;
+        }
 
-                    try
-                    {
-                        using (var client = new WebClient())
-                        {
-                            client.DownloadFile(new Uri($"{baseGitPath}"), tempFile);
+        public static IDataView GetTaxiFareTrainDataView()
+        {
+            if (_taxiFareTrainDataView == null)
+            {
+                var context = new MLContext(1);
+                var taxiFareFile = GetDataPath("taxi-fare-train.csv");
+                var columnInferenceResult = context.Auto().InferColumns(taxiFareFile, TaxiFareLabel);
+                var textLoader = context.Data.CreateTextLoader(columnInferenceResult.TextLoaderOptions);
+                _taxiFareTrainDataView = textLoader.Load(taxiFareFile);
+            }
+            return _taxiFareTrainDataView;
+        }
 
-                            if (!File.Exists(dataFile))
-                            {
-                                File.Copy(tempFile, dataFile);
-                                File.Delete(tempFile);
-                            }
-                        }
-                    }
-                    catch(Exception)
-                    {
-                    }
-                }
-
-                if (File.Exists(dataFile) && (new FileInfo(dataFile).Length > 0))
-                {
-                    return dataFile;
-                }
-
-                Thread.Sleep(300);
+        public static IDataView GetNewspaperChurnDataView()
+        {
+            if (_newspaperChurnDataView == null)
+            {
+                var context = new MLContext(1);
+                var file = GetDataPath("newspaperchurn.csv");
+                var columnInferenceResult = context.Auto().InferColumns(file, NewspaperChurnLabel);
+                var textLoader = context.Data.CreateTextLoader(columnInferenceResult.TextLoaderOptions);
+                _newspaperChurnDataView = textLoader.Load(file);
             }
 
-            throw new Exception($"Failed to download test file {dataFile}.");
+            return _newspaperChurnDataView;
+        }
+
+        public static IDataView GetCreditApprovalDataView()
+        {
+            var context = new MLContext(1);
+            var file = GetDataPath(@"creditapproval_train.csv");
+            var columnInferenceResult = context.Auto().InferColumns(file, "A16");
+            var textLoader = context.Data.CreateTextLoader(columnInferenceResult.TextLoaderOptions);
+            return textLoader.Load(file);
+        }
+
+        public static IDataView GetTaxiFareTestDataView()
+        {
+            if (_taxiFareTestDataView == null)
+            {
+                var context = new MLContext(1);
+                var taxiFareFile = GetDataPath("taxi-fare-test.csv");
+                var columnInferenceResult = context.Auto().InferColumns(taxiFareFile, TaxiFareLabel);
+                var textLoader = context.Data.CreateTextLoader(columnInferenceResult.TextLoaderOptions);
+                _taxiFareTestDataView = textLoader.Load(taxiFareFile);
+            }
+            return _taxiFareTestDataView;
         }
 
         public static string GetFlowersDataset()
@@ -116,6 +155,12 @@ namespace Microsoft.ML.AutoML.Test
         {
             var files = Directory.GetFiles(folder, "*",
                 searchOption: SearchOption.AllDirectories);
+            /*
+             * This is only needed as Linux can produce files in a different 
+             * order than other OSes. As this is a test case we want to maintain
+             * consistent accuracy across all OSes, so we sort to remove this discrepancy.
+             */
+            Array.Sort(files);
             foreach (var file in files)
             {
                 var extension = Path.GetExtension(file).ToLower();
@@ -140,18 +185,15 @@ namespace Microsoft.ML.AutoML.Test
         public static string DownloadImageSet(string imagesDownloadFolder)
         {
             string fileName = "flower_photos_tiny_set_for_unit_tests.zip";
-            string url = $"https://mlnetfilestorage.file.core.windows.net/imagesets" +
-                $"/flower_images/flower_photos_tiny_set_for_unit_tests.zip?st=2019" +
-                $"-08-29T00%3A07%3A21Z&se=2030-08-30T00%3A07%3A00Z&sp=rl&sv=2018" +
-                $"-03-28&sr=f&sig=N8HbLziTcT61kstprNLmn%2BDC0JoMrNwo6yRWb3hLLag%3D";
+            string url = $"https://aka.ms/mlnet-resources/datasets/flower_photos_tiny_set_for_unit_test.zip";
 
-            Download(url, imagesDownloadFolder, fileName);
+            Download(url, imagesDownloadFolder, fileName).Wait();
             UnZip(Path.Combine(imagesDownloadFolder, fileName), imagesDownloadFolder);
 
             return Path.GetFileNameWithoutExtension(fileName);
         }
 
-        private static void Download(string url, string destDir, string destFileName)
+        private static async Task Download(string url, string destDir, string destFileName)
         {
             if (destFileName == null)
                 destFileName = Path.GetFileName(new Uri(url).AbsolutePath); ;
@@ -163,7 +205,16 @@ namespace Microsoft.ML.AutoML.Test
             if (File.Exists(relativeFilePath))
                 return;
 
-            new WebClient().DownloadFile(url, relativeFilePath);
+            using (var client = new HttpClient())
+            {
+                var response = await client.GetAsync(url).ConfigureAwait(false);
+                var stream = await response.EnsureSuccessStatusCode().Content.ReadAsStreamAsync().ConfigureAwait(false);
+                var fileInfo = new FileInfo(relativeFilePath);
+                using (var fileStream = fileInfo.OpenWrite())
+                {
+                    await stream.CopyToAsync(fileStream).ConfigureAwait(false);
+                }
+            }
             return;
         }
 

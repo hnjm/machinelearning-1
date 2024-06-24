@@ -44,7 +44,7 @@ namespace Samples.Dynamic.Trainers.Regression
                 {
                     TopRate = 0.3,
                     OtherRate = 0.2
-               }
+                }
             };
 
             // Define the trainer.
@@ -86,11 +86,11 @@ namespace Samples.Dynamic.Trainers.Regression
             //   Mean Absolute Error: 0.04
             //   Mean Squared Error: 0.00
             //   Root Mean Squared Error: 0.06
-            //   RSquared: 0.97 (closer to 1 is better. The worest case is 0)
+            //   RSquared: 0.97 (closer to 1 is better. The worst case is 0)
         }
 
         private static IEnumerable<DataPoint> GenerateRandomDataPoints(int count,
-            int seed=0)
+            int seed = 0)
         {
             var random = new Random(seed);
             for (int i = 0; i < count; i++)

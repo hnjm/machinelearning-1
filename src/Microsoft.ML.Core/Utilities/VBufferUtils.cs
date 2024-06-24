@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -102,7 +102,7 @@ namespace Microsoft.ML.Internal.Utilities
 
         /// <summary>
         /// Applies the <paramref name="visitor "/>to each corresponding pair of elements
-        /// where the item is emplicitly defined in the vector. By explicitly defined,
+        /// where the item is implicitly defined in the vector. By explicitly defined,
         /// we mean that for a given index <c>i</c>, both vectors have an entry in
         /// <see cref="VBuffer{T}.GetValues"/> corresponding to that index.
         /// </summary>

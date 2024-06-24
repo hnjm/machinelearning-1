@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -18,11 +18,11 @@ namespace Microsoft.ML.Tests
 {
     public class DnnImageFeaturizerTests : TestDataPipeBase
     {
-        private const int inputSize = 3 * 224 * 224;
+        private const int InputSize = 3 * 224 * 224;
 
         private class TestData
         {
-            [VectorType(inputSize)]
+            [VectorType(InputSize)]
             public float[] data_0;
         }
         private class TestDataSize
@@ -32,20 +32,20 @@ namespace Microsoft.ML.Tests
         }
         private class TestDataXY
         {
-            [VectorType(inputSize)]
+            [VectorType(InputSize)]
             public float[] A;
         }
-        private class TestDataDifferntType
+        private class TestDataDifferentType
         {
-            [VectorType(inputSize)]
+            [VectorType(InputSize)]
             public string[] data_0;
         }
 
         private float[] GetSampleArrayData()
         {
-            var samplevector = new float[inputSize];
-            for (int i = 0; i < inputSize; i++)
-                samplevector[i] = (i / ((float)inputSize));
+            var samplevector = new float[InputSize];
+            for (int i = 0; i < InputSize; i++)
+                samplevector[i] = (i / ((float)InputSize));
             return samplevector;
         }
 
@@ -54,8 +54,14 @@ namespace Microsoft.ML.Tests
         }
 
         [OnnxFact]
-        void TestDnnImageFeaturizer()
+        public void TestDnnImageFeaturizer()
         {
+            //skip running for x86 as this test using too much memory (over 2GB limit on x86)
+            //and very like to hit memory related issue when running on CI
+            //TODO: optimized memory usage in related code and enable x86 test run
+            if (!Environment.Is64BitProcess)
+                return;
+
             var samplevector = GetSampleArrayData();
 
             var dataView = DataViewConstructionUtils.CreateFromList(Env,
@@ -66,8 +72,8 @@ namespace Microsoft.ML.Tests
                     },
                 });
 
-            var xyData = new List<TestDataXY> { new TestDataXY() { A = new float[inputSize] } };
-            var stringData = new List<TestDataDifferntType> { new TestDataDifferntType() { data_0 = new string[inputSize] } };
+            var xyData = new List<TestDataXY> { new TestDataXY() { A = new float[InputSize] } };
+            var stringData = new List<TestDataDifferentType> { new TestDataDifferentType() { data_0 = new string[InputSize] } };
             var sizeData = new List<TestDataSize> { new TestDataSize() { data_0 = new float[2] } };
             var pipe = ML.Transforms.DnnFeaturizeImage("output_1", m => m.ModelSelector.ResNet18(m.Environment, m.OutputColumn, m.InputColumn), "data_0");
 
@@ -123,10 +129,15 @@ namespace Microsoft.ML.Tests
             }
         }
 
-        // Onnx is only supported on x64 Windows
         [OnnxFact]
         public void TestOldSavingAndLoading()
         {
+            //skip running for x86 as this test using too much memory (over 2GB limit on x86)
+            //and very like to hit memory related issue when running on CI
+            //TODO: optimized memory usage in related code and enable x86 run
+            if (!Environment.Is64BitProcess)
+                return;
+
             var samplevector = GetSampleArrayData();
 
             var dataView = ML.Data.LoadFromEnumerable(
@@ -207,14 +218,14 @@ namespace Microsoft.ML.Tests
                                 allowQuoting: true,
                                 allowSparse: false);
 
-           var dataProcessPipeline = ML.Transforms.Conversion.MapValueToKey("Label", "Label")
-                                     .Append(ML.Transforms.LoadImages("ImagePath_featurized", imageFolder, "ImagePath"))
-                                     .Append(ML.Transforms.ResizeImages("ImagePath_featurized", 224, 224, "ImagePath_featurized"))
-                                     .Append(ML.Transforms.ExtractPixels("ImagePath_featurized", "ImagePath_featurized"))
-                                     .Append(ML.Transforms.DnnFeaturizeImage("ImagePath_featurized", m => m.ModelSelector.ResNet18(m.Environment, m.OutputColumn, m.InputColumn), "ImagePath_featurized"))
-                                     .Append(ML.Transforms.Concatenate("Features", new[] { "ImagePath_featurized" }))
-                                     .Append(ML.Transforms.NormalizeMinMax("Features", "Features"))
-                                     .AppendCacheCheckpoint(ML);
+            var dataProcessPipeline = ML.Transforms.Conversion.MapValueToKey("Label", "Label")
+                                      .Append(ML.Transforms.LoadImages("ImagePath_featurized", imageFolder, "ImagePath"))
+                                      .Append(ML.Transforms.ResizeImages("ImagePath_featurized", 224, 224, "ImagePath_featurized"))
+                                      .Append(ML.Transforms.ExtractPixels("ImagePath_featurized", "ImagePath_featurized"))
+                                      .Append(ML.Transforms.DnnFeaturizeImage("ImagePath_featurized", m => m.ModelSelector.ResNet18(m.Environment, m.OutputColumn, m.InputColumn), "ImagePath_featurized"))
+                                      .Append(ML.Transforms.Concatenate("Features", new[] { "ImagePath_featurized" }))
+                                      .Append(ML.Transforms.NormalizeMinMax("Features", "Features"))
+                                      .AppendCacheCheckpoint(ML);
 
             var trainer = ML.MulticlassClassification.Trainers.OneVersusAll(ML.BinaryClassification.Trainers.AveragedPerceptron(labelColumnName: "Label", numberOfIterations: 10, featureColumnName: "Features"), labelColumnName: "Label")
                                       .Append(ML.Transforms.Conversion.MapKeyToValue("PredictedLabel", "PredictedLabel"));

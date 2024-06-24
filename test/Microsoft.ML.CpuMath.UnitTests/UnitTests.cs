@@ -4,14 +4,24 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.ML.Internal.CpuMath;
 using Microsoft.ML.TestFramework;
 using Xunit;
+using Xunit.Abstractions;
+
+#if NETFRAMEWORK
+using RemoteOptions = Microsoft.ML.TestFramework.RemoteInvokeOptions;
+#else
+using RemoteOptions = Microsoft.DotNet.RemoteExecutor.RemoteInvokeOptions;
+#endif
 
 namespace Microsoft.ML.CpuMath.UnitTests
 {
-    public class CpuMathUtilsUnitTests
+    public class CpuMathUtilsUnitTests : BaseTestClass
     {
         private static readonly float[][] _testArrays;
         private static readonly int[] _testIndexArray;
@@ -21,14 +31,15 @@ namespace Microsoft.ML.CpuMath.UnitTests
         private static readonly int _vectorAlignment = CpuMathUtils.GetVectorAlignment();
         private static readonly FloatEqualityComparer _comparer;
         private static readonly FloatEqualityComparerForMatMul _matMulComparer;
-        private static readonly string defaultMode = "defaultMode";
-#if NETCOREAPP3_0
-        private static Dictionary<string, string> DisableAvxEnvironmentVariables;
-        private static Dictionary<string, string> DisableAvxAndSseEnvironmentVariables;
-        private static readonly string disableAvx = "COMPlus_EnableAVX";
-        private static readonly string disableSse = "COMPlus_EnableSSE";
-        private static readonly string disableAvxAndSse = "COMPlus_EnableHWIntrinsic";
-#endif
+        private static readonly string _defaultMode = "defaultMode";
+        private static Dictionary<string, string> _disableAvxEnvironmentVariables;
+        private static Dictionary<string, string> _disableAvxAndSseEnvironmentVariables;
+        private static readonly string _disableAvx = "COMPlus_EnableAVX";
+        private static readonly string _disableSse = "COMPlus_EnableSSE";
+        private static readonly string _disableAvxAndSse = "COMPlus_EnableHWIntrinsic";
+        public static bool IsNetCore => Environment.Version.Major >= 5 || RuntimeInformation.FrameworkDescription.StartsWith(".NET Core", StringComparison.OrdinalIgnoreCase);
+        public static bool IsNetCore2OrOlder => Environment.Version.Major == 4 && Environment.Version.Minor == 0;
+        public static bool SkipAvxSse => RuntimeInformation.ProcessArchitecture == Architecture.Arm || RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
 
         static CpuMathUtilsUnitTests()
         {
@@ -39,7 +50,7 @@ namespace Microsoft.ML.CpuMath.UnitTests
             // Small Input Size Array
             float[] testArray3 = new float[15] { 1.96f, -2.38f, -9.76f, 13.84f, -106.37f, -26.93f, 32.45f, 3.29f, 1.96f, -2.38f, -9.76f, 13.84f, -106.37f, -26.93f, 32.45f };
             _testArrays = new float[][] { testArray1, testArray2, testArray3 };
-            _testIndexArray = new int[18] { 0, 2, 5, 6, 8, 11, 12, 13, 14, 16, 18, 21, 22, 24, 26, 27, 28, 29};
+            _testIndexArray = new int[18] { 0, 2, 5, 6, 8, 11, 12, 13, 14, 16, 18, 21, 22, 24, 26, 27, 28, 29 };
             _comparer = new FloatEqualityComparer();
             _matMulComparer = new FloatEqualityComparerForMatMul();
 
@@ -88,34 +99,39 @@ namespace Microsoft.ML.CpuMath.UnitTests
 
             _testDstVectors = new AlignedArray[] { testDstVectorAligned1, testDstVectorAligned2 };
 
-#if NETCOREAPP3_0
-            DisableAvxEnvironmentVariables = new Dictionary<string, string>()
+            if ((SkipAvxSse || IsNetCore) && !IsNetCore2OrOlder)
             {
-                { disableAvx , "0" }
-            };
+                _disableAvxEnvironmentVariables = new Dictionary<string, string>()
+                {
+                    { _disableAvx , "0" }
+                };
 
-            DisableAvxAndSseEnvironmentVariables = new Dictionary<string, string>()
-            {
-                { disableAvx , "0" },
-                { disableSse , "0" }
-            };
-#endif
+                _disableAvxAndSseEnvironmentVariables = new Dictionary<string, string>()
+                {
+                    { _disableAvx , "0" },
+                    { _disableSse , "0" }
+                };
+            }
+        }
+
+        public CpuMathUtilsUnitTests(ITestOutputHelper output) : base(output)
+        {
         }
 
         private static void CheckProperFlag(string mode)
         {
-#if NETCOREAPP3_0
-            if (mode == defaultMode)
+#if NETCOREAPP3_1_OR_GREATER
+            if (mode == _defaultMode)
             {
                 Assert.True(System.Runtime.Intrinsics.X86.Avx.IsSupported);
                 Assert.True(System.Runtime.Intrinsics.X86.Sse.IsSupported);
             }
-            else if (mode == disableAvx)
+            else if (mode == _disableAvx)
             {
                 Assert.False(System.Runtime.Intrinsics.X86.Avx.IsSupported);
                 Assert.True(System.Runtime.Intrinsics.X86.Sse.IsSupported);
             }
-            else if (mode == disableAvxAndSse)
+            else if (mode == _disableAvxAndSse)
             {
                 Assert.False(System.Runtime.Intrinsics.X86.Avx.IsSupported);
                 Assert.False(System.Runtime.Intrinsics.X86.Sse.IsSupported);
@@ -123,62 +139,111 @@ namespace Microsoft.ML.CpuMath.UnitTests
 #endif
         }
 
-        public static TheoryData<string, string, Dictionary<string, string>> AddData() => new TheoryData<string, string, Dictionary<string, string>>()
+        public static TheoryData<string, string, Dictionary<string, string>> AddData()
         {
-            {  defaultMode, "0", null },
-            {  defaultMode, "1", null },
-            {  defaultMode, "2", null },
-#if NETCOREAPP3_0
-            { disableAvx, "0", DisableAvxEnvironmentVariables },
-            { disableAvx, "1", DisableAvxEnvironmentVariables },
+            if (SkipAvxSse)
+            {
+                return new TheoryData<string, string, Dictionary<string, string>>()
+                {
+                    { _disableAvxAndSse, "0", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "1", _disableAvxAndSseEnvironmentVariables },
+                };
+            }
+            else
+            {
+                return new TheoryData<string, string, Dictionary<string, string>>()
+                {
+                    {  _defaultMode, "0", null },
+                    {  _defaultMode, "1", null },
+                    {  _defaultMode, "2", null },
+#if NETCOREAPP3_1_OR_GREATER
+                    { _disableAvx, "0", _disableAvxEnvironmentVariables },
+                    { _disableAvx, "1", _disableAvxEnvironmentVariables },
 
-            { disableAvxAndSse, "0", DisableAvxAndSseEnvironmentVariables },
-            { disableAvxAndSse, "1", DisableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "0", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "1", _disableAvxAndSseEnvironmentVariables },
 #endif
-        };
+                };
+            }
+        }
 
-        public static TheoryData<string, string, string, Dictionary<string, string>> AddScaleData() => new TheoryData<string, string, string, Dictionary<string, string>>()
+        public static TheoryData<string, string, string, Dictionary<string, string>> AddScaleData()
         {
-            {  defaultMode, "0", "1.7", null },
-            {  defaultMode, "1", "1.7", null },
-            {  defaultMode, "2", "1.7", null },
-            {  defaultMode, "0", "-1.7", null },
-            {  defaultMode, "1", "-1.7", null },
-            {  defaultMode, "2", "-1.7", null },
-#if NETCOREAPP3_0
-            {  disableAvx, "0", "1.7", DisableAvxEnvironmentVariables },
-            {  disableAvx, "1", "1.7", DisableAvxEnvironmentVariables },
-            {  disableAvx, "0", "-1.7", DisableAvxEnvironmentVariables },
-            {  disableAvx, "1", "-1.7", DisableAvxEnvironmentVariables },
+            if (SkipAvxSse)
+            {
+                return new TheoryData<string, string, string, Dictionary<string, string>>()
+                {
+                    { _disableAvxAndSse, "0", "1.7", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "1", "1.7", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "0", "-1.7", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "1", "-1.7", _disableAvxAndSseEnvironmentVariables },
+                };
+            }
+            else
+            {
+                return new TheoryData<string, string, string, Dictionary<string, string>>()
+                {
+                    { _defaultMode, "0", "1.7", null },
+                    { _defaultMode, "1", "1.7", null },
+                    { _defaultMode, "2", "1.7", null },
+                    { _defaultMode, "0", "-1.7", null },
+                    { _defaultMode, "1", "-1.7", null },
+                    { _defaultMode, "2", "-1.7", null },
+#if NETCOREAPP3_1_OR_GREATER
+                    {  _disableAvx, "0", "1.7", _disableAvxEnvironmentVariables },
+                    {  _disableAvx, "1", "1.7", _disableAvxEnvironmentVariables },
+                    {  _disableAvx, "0", "-1.7", _disableAvxEnvironmentVariables },
+                    {  _disableAvx, "1", "-1.7", _disableAvxEnvironmentVariables },
 
-            { disableAvxAndSse, "0", "1.7", DisableAvxAndSseEnvironmentVariables },
-            { disableAvxAndSse, "1", "1.7", DisableAvxAndSseEnvironmentVariables },
-            { disableAvxAndSse, "0", "-1.7", DisableAvxAndSseEnvironmentVariables },
-            { disableAvxAndSse, "1", "-1.7", DisableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "0", "1.7", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "1", "1.7", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "0", "-1.7", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse, "1", "-1.7", _disableAvxAndSseEnvironmentVariables },
 #endif
-        };
+                };
+            }
+        }
 
-        public static TheoryData<string, string, string, string, Dictionary<string, string>> MatMulData => new TheoryData<string, string, string, string, Dictionary<string, string>>()
+        public static TheoryData<string, string, string, string, Dictionary<string, string>> MatMulData()
         {
-            { defaultMode, "0", "0", "0", null },
-            { defaultMode, "1", "1", "0", null },
-            { defaultMode, "1", "0", "1", null },
-#if NETCOREAPP3_0
-            { disableAvx, "0", "0", "0", DisableAvxEnvironmentVariables },
-            { disableAvx, "1", "1", "0", DisableAvxEnvironmentVariables },
-            { disableAvx, "1", "0", "1", DisableAvxEnvironmentVariables },
+            if (SkipAvxSse)
+            {
+                return new TheoryData<string, string, string, string, Dictionary<string, string>>()
+                {
+                    { _disableAvxAndSse , "0", "0", "0", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse , "1", "1", "0", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse , "1", "0", "1", _disableAvxAndSseEnvironmentVariables },
+                };
+            }
+            else
+            {
+                return new TheoryData<string, string, string, string, Dictionary<string, string>>()
+                {
+                    { _defaultMode, "0", "0", "0", null },
+                    { _defaultMode, "1", "1", "0", null },
+                    { _defaultMode, "1", "0", "1", null },
+#if NETCOREAPP3_1_OR_GREATER
+                    { _disableAvx, "0", "0", "0", _disableAvxEnvironmentVariables },
+                    { _disableAvx, "1", "1", "0", _disableAvxEnvironmentVariables },
+                    { _disableAvx, "1", "0", "1", _disableAvxEnvironmentVariables },
 
-            { disableAvxAndSse , "0", "0", "0", DisableAvxAndSseEnvironmentVariables },
-            { disableAvxAndSse , "1", "1", "0", DisableAvxAndSseEnvironmentVariables },
-            { disableAvxAndSse , "1", "0", "1", DisableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse , "0", "0", "0", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse , "1", "1", "0", _disableAvxAndSseEnvironmentVariables },
+                    { _disableAvxAndSse , "1", "0", "1", _disableAvxAndSseEnvironmentVariables },
 #endif
-        };
+                };
+            }
+        }
 
         [Theory]
         [MemberData(nameof(MatMulData))]
         public void MatMulTest(string mode, string matTest, string srcTest, string dstTest, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2, arg3) =>
+
             {
                 CheckProperFlag(arg0);
                 AlignedArray mat = _testMatrices[int.Parse(arg1)];
@@ -192,7 +257,7 @@ namespace Microsoft.ML.CpuMath.UnitTests
                     for (int j = 0; j < src.Size; j++)
                     {
                         dotProduct += mat[i * src.Size + j] * src[j];
-                    }                    
+                    }
                     expected[i] = dotProduct;
                 }
 
@@ -201,13 +266,17 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 dst.CopyTo(actual, 0, dst.Size);
                 Assert.Equal(expected, actual, _matMulComparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, matTest, srcTest, dstTest, new RemoteInvokeOptions(environmentVariables));
+            }, mode, matTest, srcTest, dstTest, options);
+
         }
 
         [Theory]
         [MemberData(nameof(MatMulData))]
         public void MatMulTranTest(string mode, string matTest, string srcTest, string dstTest, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2, arg3) =>
             {
                 CheckProperFlag(arg0);
@@ -231,13 +300,16 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 dst.CopyTo(actual, 0, dst.Size);
                 Assert.Equal(expected, actual, _matMulComparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, matTest, srcTest, dstTest, new RemoteInvokeOptions(environmentVariables));
+            }, mode, matTest, srcTest, dstTest, options);
         }
 
         [Theory]
         [MemberData(nameof(MatMulData))]
         public void MatTimesSrcSparseTest(string mode, string matTest, string srcTest, string dstTest, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2, arg3) =>
             {
                 CheckProperFlag(arg0);
@@ -265,13 +337,17 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 Assert.Equal(expected, actual, _matMulComparer);
                 return RemoteExecutor.SuccessExitCode;
 
-            }, mode, matTest, srcTest, dstTest, new RemoteInvokeOptions(environmentVariables));
+            }, mode, matTest, srcTest, dstTest, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "xUnit1026:Theory methods should use all of their parameters", Justification = "<Pending>")]
         public void AddScalarUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -288,13 +364,16 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = dst;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
         public void ScaleTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -311,13 +390,16 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = dst;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
         public void ScaleSrcUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -335,13 +417,16 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = dst;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
         public void ScaleAddUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -358,7 +443,7 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = dst;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
 
         }
 
@@ -366,6 +451,9 @@ namespace Microsoft.ML.CpuMath.UnitTests
         [MemberData(nameof(AddScaleData))]
         public void AddScaleUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -383,13 +471,16 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = dst;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
         public void AddScaleSUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -409,18 +500,21 @@ namespace Microsoft.ML.CpuMath.UnitTests
 
                 Assert.Equal(expected, dst, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
         public void AddScaleCopyUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
-                float defaultScale = float.Parse(arg2, CultureInfo.InvariantCulture);
-                float[] src = (float[])_testArrays[int.Parse(arg1)].Clone();
+                float defaultScale = float.Parse("1.7", CultureInfo.InvariantCulture);
+                float[] src = (float[])_testArrays[int.Parse("0")].Clone();
                 float[] dst = (float[])src.Clone();
                 float[] result = (float[])dst.Clone();
                 float[] expected = (float[])dst.Clone();
@@ -434,14 +528,17 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = result;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void AddUTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
-            RemoteExecutor.RemoteInvoke((arg0, arg1) => 
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
+            RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
                 float[] src = (float[])_testArrays[int.Parse(arg1)].Clone();
@@ -463,13 +560,17 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = dst;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions (environmentVariables));
+            }, mode, test, options);
+
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void AddSUTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
@@ -489,13 +590,16 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = dst;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void MulElementWiseUTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg1);
@@ -519,14 +623,17 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 CpuMathUtils.MulElementWise(src1, src2, dst, dst.Length);
                 var actual = dst;
                 Assert.Equal(expected, actual, _comparer);
-                return RemoteExecutor.SuccessExitCode; 
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+                return RemoteExecutor.SuccessExitCode;
+            }, mode, test, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void SumTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
@@ -538,15 +645,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 }
 
                 var actual = CpuMathUtils.Sum(src);
-                Assert.Equal(expected, actual, 2);
+                Assert.Equal((double)expected, (double)actual, 0.01);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void SumSqUTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
@@ -558,15 +668,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 }
 
                 var actual = CpuMathUtils.SumSq(src);
-                Assert.Equal(expected, actual, 2);
+                Assert.Equal((double)expected, (double)actual, 0.01);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
         public void SumSqDiffUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -580,15 +693,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                     expected += (src[i] - defaultScale) * (src[i] - defaultScale);
                 }
 
-                Assert.Equal(expected, actual, 1);
+                Assert.Equal((double)expected, (double)actual, 0.1);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void SumAbsUTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
@@ -600,15 +716,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 }
 
                 var actual = CpuMathUtils.SumAbs(src);
-                Assert.Equal(expected, actual, 2);
+                Assert.Equal((double)expected, (double)actual, 0.01);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
         public void SumAbsDiffUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -622,15 +741,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                     expected += Math.Abs(src[i] - defaultScale);
                 }
 
-                Assert.Equal(expected, actual, 2);
+                Assert.Equal((double)expected, (double)actual, 0.01);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void MaxAbsUTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
@@ -647,15 +769,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                     }
                 }
 
-                Assert.Equal(expected, actual, 2);
+                Assert.Equal((double)expected, (double)actual, 0.01);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, options);
         }
 
         [Theory]
         [MemberData(nameof(AddScaleData))]
         public void MaxAbsDiffUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -672,15 +797,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                         expected = abs;
                     }
                 }
-                Assert.Equal(expected, actual, 2);
+                Assert.Equal((double)expected, (double)actual, 0.01);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void DotUTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
@@ -699,15 +827,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 }
 
                 var actual = CpuMathUtils.DotProductDense(src, dst, dst.Length);
-                Assert.Equal(expected, actual, 1);
+                Assert.Equal((double)expected, (double)actual, 0.1);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void DotSUTest(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
@@ -730,15 +861,18 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 }
 
                 var actual = CpuMathUtils.DotProductSparse(src, dst, idx, limit);
-                Assert.Equal(expected, actual, 2);
+                Assert.Equal((double)expected, (double)actual, 0.01);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, options);
         }
 
         [Theory]
         [MemberData(nameof(AddData))]
         public void Dist2Test(string mode, string test, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1) =>
             {
                 CheckProperFlag(arg0);
@@ -759,9 +893,9 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 }
 
                 var actual = CpuMathUtils.L2DistSquared(src, dst, dst.Length);
-                Assert.Equal(expected, actual, 0);
+                Assert.Equal((double)expected, (double)actual, 0);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, options);
         }
 
         [Theory]
@@ -796,6 +930,9 @@ namespace Microsoft.ML.CpuMath.UnitTests
         [MemberData(nameof(AddScaleData))]
         public void SdcaL1UpdateUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -815,7 +952,7 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = w;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
 
 
@@ -823,6 +960,9 @@ namespace Microsoft.ML.CpuMath.UnitTests
         [MemberData(nameof(AddScaleData))]
         public void SdcaL1UpdateSUTest(string mode, string test, string scale, Dictionary<string, string> environmentVariables)
         {
+            var options = new RemoteOptions();
+            UpdateEnvVars(options, environmentVariables);
+
             RemoteExecutor.RemoteInvoke((arg0, arg1, arg2) =>
             {
                 CheckProperFlag(arg0);
@@ -845,8 +985,22 @@ namespace Microsoft.ML.CpuMath.UnitTests
                 var actual = w;
                 Assert.Equal(expected, actual, _comparer);
                 return RemoteExecutor.SuccessExitCode;
-            }, mode, test, scale, new RemoteInvokeOptions(environmentVariables));
+            }, mode, test, scale, options);
         }
+
+        private void UpdateEnvVars(RemoteOptions options, Dictionary<string, string> environmentVariables)
+        {
+            if (environmentVariables == null)
+                return;
+
+            foreach (var item in environmentVariables)
+            {
+                options.StartInfo.Environment.Add(item.Key, item.Value);
+            }
+
+            options.StartInfo.WorkingDirectory = System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        }
+
     }
 
     internal class FloatEqualityComparer : IEqualityComparer<float>

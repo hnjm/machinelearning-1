@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -289,6 +289,12 @@ namespace Microsoft.ML.Data
         /// </summary>
         private sealed class Splitter
         {
+            private static readonly FuncStaticMethodInfo1<object[], int, object> _getPoolCoreMethodInfo
+                = new FuncStaticMethodInfo1<object[], int, object>(GetPoolCore<int>);
+
+            private static readonly FuncInstanceMethodInfo1<Splitter, DataViewRowCursor, int, InPipe> _createInPipeMethodInfo
+                = FuncInstanceMethodInfo1<Splitter, DataViewRowCursor, int, InPipe>.Create(target => target.CreateInPipe<int>);
+
             private readonly DataViewSchema _schema;
             private readonly object[] _cachePools;
 
@@ -367,13 +373,13 @@ namespace Microsoft.ML.Data
                     ch.Assert(localCursor.Position < 0);
                     // Note that these all take ownership of their respective cursors,
                     // so they all handle their disposal internal to the thread.
-                    workers[t] = Utils.RunOnBackgroundThread(() =>
+                    workers[t] = Utils.RunOnBackgroundThreadAsync(() =>
                     {
-                            // This will be the last batch sent in the finally. If iteration procedes without
-                            // error, it will remain null, and be sent as a sentinel. If iteration results in
-                            // an exception that we catch, the exception catching block will set this to an
-                            // exception bearing block, and that will be passed along as the last block instead.
-                            Batch lastBatch = null;
+                        // This will be the last batch sent in the finally. If iteration proceeds without
+                        // error, it will remain null, and be sent as a sentinel. If iteration results in
+                        // an exception that we catch, the exception catching block will set this to an
+                        // exception bearing block, and that will be passed along as the last block instead.
+                        Batch lastBatch = null;
                         try
                         {
                             using (localCursor)
@@ -385,9 +391,9 @@ namespace Microsoft.ML.Data
 
                                 long oldBatch = 0;
                                 int count = 0;
-                                    // This event is used to synchronize ourselves using a MinWaiter
-                                    // so that we add batches to the consumer queue at the appropriate time.
-                                    ManualResetEventSlim waiterEvent = null;
+                                // This event is used to synchronize ourselves using a MinWaiter
+                                // so that we add batches to the consumer queue at the appropriate time.
+                                ManualResetEventSlim waiterEvent = null;
 
                                 Action pushBatch = () =>
                                 {
@@ -396,26 +402,26 @@ namespace Microsoft.ML.Data
                                         var batchColumns = batchColumnPool.Get();
                                         for (int i = 0; i < inPipes.Length; ++i)
                                             batchColumns[i] = inPipes[i].GetBatchColumnAndReset();
-                                            // REVIEW: Is it worth not allocating new Batch object for each batch?
-                                            var batch = new Batch(batchColumnPool, batchColumns, count, oldBatch);
+                                        // REVIEW: Is it worth not allocating new Batch object for each batch?
+                                        var batch = new Batch(batchColumnPool, batchColumns, count, oldBatch);
                                         count = 0;
-                                            // The waiter event should never be null since this is only
-                                            // called after a point where waiter.Register has been called.
-                                            ch.AssertValue(waiterEvent);
+                                        // The waiter event should never be null since this is only
+                                        // called after a point where waiter.Register has been called.
+                                        ch.AssertValue(waiterEvent);
                                         waiterEvent.Wait();
                                         waiterEvent = null;
                                         toConsume.Add(batch);
                                     }
                                 };
-                                    // Handle the first one separately, then go into the main loop.
-                                    if (localCursor.MoveNext() && !done)
+                                // Handle the first one separately, then go into the main loop.
+                                if (localCursor.MoveNext() && !done)
                                 {
                                     oldBatch = localCursor.Batch;
                                     foreach (var pipe in inPipes)
                                         pipe.Fill();
                                     count++;
-                                        // Register with the min waiter that we want to wait on this batch number.
-                                        waiterEvent = waiter.Register(oldBatch);
+                                    // Register with the min waiter that we want to wait on this batch number.
+                                    waiterEvent = waiter.Register(oldBatch);
 
                                     while (localCursor.MoveNext() && !done)
                                     {
@@ -436,8 +442,8 @@ namespace Microsoft.ML.Data
                         }
                         catch (Exception ex)
                         {
-                                // Whoops, we won't be sending null as the sentinel now.
-                                lastBatch = new Batch(ex);
+                            // Whoops, we won't be sending null as the sentinel now.
+                            lastBatch = new Batch(ex);
                             toConsume.Add(new Batch(ex));
                         }
                         finally
@@ -446,9 +452,9 @@ namespace Microsoft.ML.Data
                             {
                                 if (lastBatch == null)
                                 {
-                                        // If it wasn't null, this already sent along an exception bearing batch, in which
-                                        // case sending the sentinel is unnecessary and unhelpful.
-                                        toConsume.Add(null);
+                                    // If it wasn't null, this already sent along an exception bearing batch, in which
+                                    // case sending the sentinel is unnecessary and unhelpful.
+                                    toConsume.Add(null);
                                 }
                                 toConsume.CompleteAdding();
                             }
@@ -476,9 +482,7 @@ namespace Microsoft.ML.Data
 
             private static object GetPool(DataViewType type, object[] pools, int poolIdx)
             {
-                Func<object[], int, object> func = GetPoolCore<int>;
-                var method = func.GetMethodInfo().GetGenericMethodDefinition().MakeGenericMethod(type.RawType);
-                return method.Invoke(null, new object[] { pools, poolIdx });
+                return Utils.MarshalInvoke(_getPoolCoreMethodInfo, type.RawType, pools, poolIdx);
             }
 
             private static MadeObjectPool<T[]> GetPoolCore<T>(object[] pools, int poolIdx)
@@ -519,9 +523,6 @@ namespace Microsoft.ML.Data
                 int[] colToActive;
                 Utils.BuildSubsetMaps(_schema, input.IsColumnActive, out activeToCol, out colToActive);
 
-                Func<DataViewRowCursor, int, InPipe> createFunc = CreateInPipe<int>;
-                var inGenMethod = createFunc.GetMethodInfo().GetGenericMethodDefinition();
-                object[] arguments = new object[] { input, 0 };
                 // Only one set of in-pipes, one per column, as well as for extra side information.
                 InPipe[] inPipes = new InPipe[activeToCol.Length + (int)ExtraIndex._Lim];
                 // There are as many sets of out pipes as there are output cursors.
@@ -537,9 +538,8 @@ namespace Microsoft.ML.Data
                     var column = input.Schema[activeToCol[c]];
                     ch.Assert(input.IsColumnActive(column));
                     ch.Assert(column.Type.IsCacheable());
-                    arguments[1] = activeToCol[c];
                     var inPipe = inPipes[c] =
-                        (InPipe)inGenMethod.MakeGenericMethod(column.Type.RawType).Invoke(this, arguments);
+                        Utils.MarshalInvoke(_createInPipeMethodInfo, this, column.Type.RawType, input, activeToCol[c]);
                     for (int i = 0; i < cthd; ++i)
                         outPipes[i][c] = inPipe.CreateOutPipe(column.Type);
                 }
@@ -557,7 +557,7 @@ namespace Microsoft.ML.Data
                 // Set up and start the thread that consumes the input, and utilizes the InPipe
                 // instances to compose the Batch objects. The thread takes ownership of the
                 // cursor, and so handles its disposal.
-                Task thread = Utils.RunOnBackgroundThread(
+                Task thread = Utils.RunOnBackgroundThreadAsync(
                     () =>
                     {
                         Batch lastBatch = null;
@@ -942,8 +942,10 @@ namespace Microsoft.ML.Data
                     public override void Unset()
                     {
                         Contracts.Assert(_index <= _count);
-                        if (Values != null)
-                            _pool.Return(Values);
+                        // Remove all the objects from the pool
+                        // to free up references to those objects
+                        while (_pool.Count > 0)
+                            _pool.Get();
                         Values = null;
                         _count = 0;
                         _index = 0;
@@ -1123,9 +1125,11 @@ namespace Microsoft.ML.Data
                     Ch.CheckParam(IsColumnActive(column), nameof(column), "requested column not active.");
                     Ch.CheckParam(column.Index < _colToActive.Length, nameof(column), "requested column is not active or valid for the Schema.");
 
-                    var getter = _getters[_colToActive[column.Index]] as ValueGetter<TValue>;
+                    var originGetter = _getters[_colToActive[column.Index]];
+                    var getter = originGetter as ValueGetter<TValue>;
                     if (getter == null)
-                        throw Ch.Except("Invalid TValue: '{0}'", typeof(TValue));
+                        throw Ch.Except($"Invalid TValue: '{typeof(TValue)}', " +
+                            $"expected type: '{originGetter.GetType().GetGenericArguments().First()}'.");
                     return getter;
                 }
             }
@@ -1138,6 +1142,9 @@ namespace Microsoft.ML.Data
         /// </summary>
         internal sealed class SynchronousConsolidatingCursor : RootCursorBase
         {
+            private static readonly FuncInstanceMethodInfo1<SynchronousConsolidatingCursor, int, Delegate> _createGetterMethodInfo
+                = FuncInstanceMethodInfo1<SynchronousConsolidatingCursor, int, Delegate>.Create(target => target.CreateGetter<int>);
+
             private readonly DataViewRowCursor[] _cursors;
             private readonly Delegate[] _getters;
 
@@ -1145,7 +1152,6 @@ namespace Microsoft.ML.Data
             private readonly Heap<CursorStats> _mins;
             private readonly int[] _activeToCol;
             private readonly int[] _colToActive;
-            private readonly MethodInfo _methInfo;
 
             // The batch number of the current input cursor, or -1 if this cursor is not in Good state.
             private long _batch;
@@ -1181,9 +1187,6 @@ namespace Microsoft.ML.Data
                 _schema = _cursors[0].Schema;
 
                 Utils.BuildSubsetMaps(_schema, _cursors[0].IsColumnActive, out _activeToCol, out _colToActive);
-
-                Func<int, Delegate> func = CreateGetter<int>;
-                _methInfo = func.GetMethodInfo().GetGenericMethodDefinition();
 
                 _getters = new Delegate[_activeToCol.Length];
                 for (int i = 0; i < _activeToCol.Length; ++i)
@@ -1238,8 +1241,7 @@ namespace Microsoft.ML.Data
 
             private Delegate CreateGetter(int col)
             {
-                var methInfo = _methInfo.MakeGenericMethod(Schema[col].Type.RawType);
-                return (Delegate)methInfo.Invoke(this, new object[] { col });
+                return Utils.MarshalInvoke(_createGetterMethodInfo, this, Schema[col].Type.RawType, col);
             }
 
             private Delegate CreateGetter<T>(int col)
@@ -1314,9 +1316,11 @@ namespace Microsoft.ML.Data
                 Ch.CheckParam(IsColumnActive(column), nameof(column), "requested column not active");
                 Ch.CheckParam(column.Index < _colToActive.Length, nameof(column), "requested column not active or is invalid for the schema. ");
 
-                var getter = _getters[_colToActive[column.Index]] as ValueGetter<TValue>;
+                var originGetter = _getters[_colToActive[column.Index]];
+                var getter = originGetter as ValueGetter<TValue>;
                 if (getter == null)
-                    throw Ch.Except("Invalid TValue: '{0}'", typeof(TValue));
+                    throw Ch.Except($"Invalid TValue: '{typeof(TValue)}', " +
+                        $"expected type: '{originGetter.GetType().GetGenericArguments().First()}'.");
                 return getter;
             }
         }
@@ -1354,7 +1358,7 @@ namespace Microsoft.ML.Data
             var floatGetter = cursor.GetGetter<T>(cursor.Schema[i]);
             T v = default(T);
             ValueMapper<T, StringBuilder> conversion;
-            if (!Conversions.Instance.TryGetStringConversion<T>(colType, out conversion))
+            if (!Conversions.DefaultInstance.TryGetStringConversion<T>(colType, out conversion))
             {
                 var error = $"Cannot display {colType}";
                 conversion = (in T src, ref StringBuilder builder) =>
@@ -1385,7 +1389,7 @@ namespace Microsoft.ML.Data
             var vbuf = default(VBuffer<T>);
             const int previewValues = 100;
             ValueMapper<T, StringBuilder> conversion;
-            Conversions.Instance.TryGetStringConversion<T>(colType, out conversion);
+            Conversions.DefaultInstance.TryGetStringConversion<T>(colType, out conversion);
             StringBuilder dst = null;
             ValueGetter<ReadOnlyMemory<char>> getter =
                 (ref ReadOnlyMemory<char> value) =>

@@ -30,7 +30,7 @@ namespace Samples.Dynamic
                 new TextData(){ Text = "The value at each position corresponds " +
                     "to," },
 
-                new TextData(){ Text = "the number of times n-gram occured in " +
+                new TextData(){ Text = "the number of times n-gram occurred in " +
                     "the data (Tf), or" },
 
                 new TextData(){ Text = "the inverse of the number of documents " +
@@ -45,7 +45,7 @@ namespace Samples.Dynamic
 
             // A pipeline for converting text into numeric n-gram features.
             // The following call to 'ProduceNgrams' requires the tokenized
-            // text /string as input. This is acheived by calling 
+            // text /string as input. This is achieved by calling 
             // 'TokenizeIntoWords' first followed by 'ProduceNgrams'. Please note
             // that the length of the output feature vector depends on the n-gram
             // settings.
@@ -59,7 +59,7 @@ namespace Samples.Dynamic
                     ngramLength: 3,
                     useAllLengths: false,
                     weighting: NgramExtractingEstimator.WeightingCriteria.Tf));
-            
+
             // Fit to data.
             var textTransformer = textPipeline.Fit(dataview);
             var transformedDataView = textTransformer.Transform(dataview);

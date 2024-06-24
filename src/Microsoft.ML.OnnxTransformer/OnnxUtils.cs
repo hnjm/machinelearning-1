@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -6,11 +6,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Numerics.Tensors;
 using Microsoft.ML.Data;
 using Microsoft.ML.Model.OnnxConverter;
 using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using Microsoft.ML.Runtime;
+using static Microsoft.ML.Model.OnnxConverter.OnnxCSharpToProtoWrapper;
 using OnnxShape = System.Collections.Generic.List<int>;
 
 namespace Microsoft.ML.Transforms.Onnx
@@ -38,6 +39,10 @@ namespace Microsoft.ML.Transforms.Onnx
             /// </summary>
             public List<string> OutputNames { get; }
             /// <summary>
+            /// Initializers[i] is the name of the i-th initializer in <see cref="InitializersInfo"/>.
+            /// </summary>
+            public List<string> InitializerNames { get; }
+            /// <summary>
             /// Inputs of the containing <see cref="OnnxModel"/>.
             /// </summary>
             public OnnxVariableInfo[] InputsInfo { get; }
@@ -46,12 +51,19 @@ namespace Microsoft.ML.Transforms.Onnx
             /// </summary>
             public OnnxVariableInfo[] OutputsInfo { get; }
 
-            public OnnxModelInfo(IEnumerable<OnnxVariableInfo> inputsInfo, IEnumerable<OnnxVariableInfo> outputsInfo)
+            /// <summary>
+            /// Initializers of the containing <see cref="OnnxModel"/>
+            /// </summary>
+            public OnnxVariableInfo[] InitializersInfo { get; }
+
+            public OnnxModelInfo(IEnumerable<OnnxVariableInfo> inputsInfo, IEnumerable<OnnxVariableInfo> outputsInfo, IEnumerable<OnnxVariableInfo> initializersInfo)
             {
                 InputNames = inputsInfo.Select(val => val.Name).ToList();
                 InputsInfo = inputsInfo.ToArray();
                 OutputNames = outputsInfo.Select(val => val.Name).ToList();
                 OutputsInfo = outputsInfo.ToArray();
+                InitializerNames = initializersInfo.Select(val => val.Name).ToList();
+                InitializersInfo = initializersInfo.ToArray();
             }
 
             /// <summary>
@@ -60,10 +72,16 @@ namespace Microsoft.ML.Transforms.Onnx
             public OnnxVariableInfo GetInput(string name)
             {
                 var index = InputNames.IndexOf(name);
-                if (index < 0)
-                    throw Contracts.ExceptParamValue(name, nameof(name), $"Input tensor, {name}, does not exist in the ONNX model. " +
-                        $"Available input names are [{string.Join(",", InputNames)}].");
-                return InputsInfo[index];
+                if (index >= 0)
+                    return InputsInfo[index];
+
+                index = InitializerNames.IndexOf(name);
+                if (index >= 0)
+                    return InitializersInfo[index];
+
+                // If we dont find the index in the input, try find it in the initializers
+                throw Contracts.ExceptParamValue(name, nameof(name), $"Input tensor, {name}, does not exist in the ONNX model. " +
+                    $"Available input names are [{string.Join(",", InputNames)}]. Available initializers are [{string.Join(",", InitializerNames)}]");
             }
 
             /// <summary>
@@ -73,7 +91,7 @@ namespace Microsoft.ML.Transforms.Onnx
             {
                 var index = OutputNames.IndexOf(name);
                 if (index < 0)
-                    throw Contracts.ExceptParamValue(name, nameof(name), $"Onput tensor, {name}, does not exist in the ONNX model. " +
+                    throw Contracts.ExceptParamValue(name, nameof(name), $"Ouput tensor, {name}, does not exist in the ONNX model. " +
                         $"Available output names are [{string.Join(",", OutputNames)}].");
                 return OutputsInfo[index];
             }
@@ -125,14 +143,9 @@ namespace Microsoft.ML.Transforms.Onnx
         /// </summary>
         private readonly InferenceSession _session;
         /// <summary>
-        /// Indicates if <see cref="ModelFile"/> is a temporal file created by <see cref="CreateFromBytes(byte[], int?, bool, IDictionary{string, int[]})"/>
-        /// or <see cref="CreateFromBytes(byte[])"/>. If <see langword="true"/>, <see cref="Dispose(bool)"/> should delete <see cref="ModelFile"/>.
+        /// The FileStream holding onto the loaded ONNX model.
         /// </summary>
-        private bool _ownModelFile;
-        /// <summary>
-        /// The location where the used ONNX model loaded from.
-        /// </summary>
-        internal string ModelFile { get; }
+        internal FileStream ModelStream { get; }
         /// <summary>
         /// The ONNX model's information from ONNXRuntime's perspective. ML.NET can change the input and output of that model in some ways.
         /// For example, ML.NET can shuffle the inputs so that the i-th ONNX input becomes the j-th input column of <see cref="OnnxTransformer"/>.
@@ -140,21 +153,25 @@ namespace Microsoft.ML.Transforms.Onnx
         /// </summary>
         internal OnnxModelInfo ModelInfo { get; }
 
+        internal GraphProto Graph { get; }
+
         /// <summary>
         /// Constructs OnnxModel object from file.
         /// </summary>
         /// <param name="modelFile">Model file path.</param>
         /// <param name="gpuDeviceId">GPU device ID to execute on. Null for CPU.</param>
-        /// <param name="fallbackToCpu">If true, resumes CPU execution quitely upon GPU error.</param>
+        /// <param name="fallbackToCpu">If true, resumes CPU execution quietly upon GPU error.</param>
         /// <param name="ownModelFile">If true, the <paramref name="modelFile"/> will be deleted when <see cref="OnnxModel"/> is
         /// no longer needed.</param>
         /// <param name="shapeDictionary"></param>
+        /// <param name="recursionLimit">Optional, specifies the Protobuf CodedInputStream recursion limit. Default value is 100.</param>
+        /// <param name="interOpNumThreads">Controls the number of threads used to parallelize the execution of the graph (across nodes).</param>
+        /// <param name="intraOpNumThreads">Controls the number of threads to use to run the model.</param>
         public OnnxModel(string modelFile, int? gpuDeviceId = null, bool fallbackToCpu = false,
-            bool ownModelFile=false, IDictionary<string, int[]> shapeDictionary = null)
+            bool ownModelFile = false, IDictionary<string, int[]> shapeDictionary = null, int recursionLimit = 100,
+            int? interOpNumThreads = null, int? intraOpNumThreads = null)
         {
-            ModelFile = modelFile;
             // If we don't own the model file, _disposed should be false to prevent deleting user's file.
-            _ownModelFile = ownModelFile;
             _disposed = false;
 
             if (gpuDeviceId != null)
@@ -167,93 +184,101 @@ namespace Microsoft.ML.Transforms.Onnx
                 catch (OnnxRuntimeException)
                 {
                     if (fallbackToCpu)
-                        _session = new InferenceSession(modelFile);
+                    {
+                        var sessionOptions = new SessionOptions()
+                        {
+                            InterOpNumThreads = interOpNumThreads.GetValueOrDefault(),
+                            IntraOpNumThreads = intraOpNumThreads.GetValueOrDefault()
+                        };
+                        _session = new InferenceSession(modelFile, sessionOptions);
+                    }
                     else
-                        // if called from OnnxTranform, is caught and rethrown.
+                        // If called from OnnxTransform, is caught and rethrown
                         throw;
                 }
             }
             else
             {
-                _session = new InferenceSession(modelFile);
-            }
-
-            // Load ONNX model file and parse its input and output schema. The reason of doing so is that ONNXRuntime
-            // doesn't expose full type information via its C# APIs.
-            ModelFile = modelFile;
-            var model = new OnnxCSharpToProtoWrapper.ModelProto();
-            using (var modelStream = File.OpenRead(modelFile))
-            using (var codedStream = Google.Protobuf.CodedInputStream.CreateWithLimits(modelStream, Int32.MaxValue, 10))
-                model = OnnxCSharpToProtoWrapper.ModelProto.Parser.ParseFrom(codedStream);
-
-            // Parse actual input and output types stored in the loaded ONNX model to get their DataViewType's.
-            var inputTypePool = new Dictionary<string, DataViewType>();
-            foreach (var valueInfo in model.Graph.Input)
-                inputTypePool[valueInfo.Name] = OnnxTypeParser.GetDataViewType(valueInfo.Type);
-            var outputTypePool = new Dictionary<string, DataViewType>();
-
-            // Build casters which maps NamedOnnxValue to .NET objects.
-            var casterPool = new Dictionary<string, Func<NamedOnnxValue, object>>();
-            foreach (var valueInfo in model.Graph.Output)
-            {
-                outputTypePool[valueInfo.Name] = OnnxTypeParser.GetDataViewType(valueInfo.Type);
-                casterPool[valueInfo.Name] = OnnxTypeParser.GetDataViewValueCasterAndResultedType(valueInfo.Type, out Type actualType);
-            }
-
-            var onnxRuntimeInputInfos = new List<OnnxVariableInfo>();
-            // Collect input information for this ONNX model from ONNXRuntime's perspective.
-            foreach (var pair in _session.InputMetadata)
-            {
-                var name = pair.Key;
-                var meta = pair.Value;
-                var dataViewType = inputTypePool[name];
-
-                OnnxVariableInfo info = null;
-                if (shapeDictionary != null && shapeDictionary.ContainsKey(name))
+                var sessionOptions = new SessionOptions()
                 {
-                    // If user provides a shape of a specific tensor, the provided shape overwrites the corresponding one loaded from
-                    // ONNX model file and the deduced DataViewVectorType.
+                    InterOpNumThreads = interOpNumThreads.GetValueOrDefault(),
+                    IntraOpNumThreads = intraOpNumThreads.GetValueOrDefault()
+                };
+                _session = new InferenceSession(modelFile, sessionOptions);
+            }
 
-                    if (!CheckOnnxShapeCompatibility(shapeDictionary[name].ToList(), meta.Dimensions.ToList()))
-                        throw Contracts.ExceptParamValue(shapeDictionary[name], nameof(shapeDictionary),
-                            "The specified shape " + string.Join(",", shapeDictionary[name]) +
-                            " is not compatible with the shape " + string.Join(",", meta.Dimensions) +
-                            " loaded from the ONNX model file. Only unknown dimension can replace or " +
-                            "be replaced by another dimension.");
-
-                    if (dataViewType is VectorDataViewType vectorType)
-                    {
-                        if (shapeDictionary[name].All(value => value > 0))
-                            dataViewType = new VectorDataViewType(vectorType.ItemType, shapeDictionary[name]);
-                        else
-                            dataViewType = new VectorDataViewType(vectorType.ItemType);
-                    }
-
-                    info = new OnnxVariableInfo(name, shapeDictionary[name].ToList(), meta.ElementType, dataViewType, null);
-                }
+            try
+            {
+                // Load ONNX model file and parse its input and output schema. The reason of doing so is that ONNXRuntime
+                // doesn't expose full type information via its C# APIs.
+                var model = new OnnxCSharpToProtoWrapper.ModelProto();
+                // If we own the model file set the DeleteOnClose flag so it is always deleted.
+                if (ownModelFile)
+                    ModelStream = new FileStream(modelFile, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
                 else
-                {
-                    // No user-specified shape is found, so the shape loaded from ONNX model file is used.
-                    info = new OnnxVariableInfo(name, meta.Dimensions.ToList(), meta.ElementType, dataViewType, null);
-                }
-                onnxRuntimeInputInfos.Add(info);
-            }
+                    ModelStream = new FileStream(modelFile, FileMode.Open, FileAccess.Read);
 
-            var onnxRuntimeOutputInfos = new List<OnnxVariableInfo>();
-            // Collect output information for this ONNX model from ONNXRuntime's perspective.
-            foreach (var pair in _session.OutputMetadata)
+                // The CodedInputStream auto closes the stream, and we need to make sure that our main stream stays open, so creating a new one here.
+                using (var modelStream = new FileStream(modelFile, FileMode.Open, FileAccess.Read, FileShare.Delete | FileShare.Read))
+                using (var codedStream = Google.Protobuf.CodedInputStream.CreateWithLimits(modelStream, Int32.MaxValue, recursionLimit))
+                    model = OnnxCSharpToProtoWrapper.ModelProto.Parser.ParseFrom(codedStream);
+
+                // Parse actual input and output types stored in the loaded ONNX model to get their DataViewType's.
+                var inputTypePool = new Dictionary<string, DataViewType>();
+                foreach (var valueInfo in model.Graph.Input)
+                    inputTypePool[valueInfo.Name] = OnnxTypeParser.GetDataViewType(valueInfo.Type);
+
+                var initializerTypePool = new Dictionary<string, DataViewType>();
+                foreach (var valueInfo in model.Graph.Initializer)
+                    initializerTypePool[valueInfo.Name] = OnnxTypeParser.GetScalarDataViewType(valueInfo.DataType);
+
+                var outputTypePool = new Dictionary<string, DataViewType>();
+                // Build casters which maps NamedOnnxValue to .NET objects.
+                var casterPool = new Dictionary<string, Func<NamedOnnxValue, object>>();
+                foreach (var valueInfo in model.Graph.Output)
+                {
+                    outputTypePool[valueInfo.Name] = OnnxTypeParser.GetDataViewType(valueInfo.Type);
+                    casterPool[valueInfo.Name] = OnnxTypeParser.GetDataViewValueCasterAndResultedType(valueInfo.Type, out Type actualType);
+                }
+
+                var inputInfos = GetOnnxVariablesFromMetadata(_session.InputMetadata, shapeDictionary, inputTypePool, null);
+                var outputInfos = GetOnnxVariablesFromMetadata(_session.OutputMetadata, shapeDictionary, outputTypePool, casterPool);
+                var overrideableInitializers = GetOnnxVariablesFromMetadata(_session.OverridableInitializerMetadata, shapeDictionary, inputTypePool, null);
+
+                // Create a view to the used ONNX model from ONNXRuntime's perspective.
+                ModelInfo = new OnnxModelInfo(inputInfos, outputInfos, overrideableInitializers);
+
+                Graph = model.Graph;
+            }
+            catch
+            {
+                _session.Dispose();
+                _session = null;
+                throw;
+            }
+        }
+
+        private List<OnnxVariableInfo> GetOnnxVariablesFromMetadata(IReadOnlyDictionary<string, NodeMetadata> nodeMetadata,
+            IDictionary<string, int[]> shapeDictionary,
+            Dictionary<string, DataViewType> typePool,
+            Dictionary<string, Func<NamedOnnxValue, object>> casterPool)
+        {
+            var onnxVariableInfos = new List<OnnxVariableInfo>();
+
+            foreach (var pair in nodeMetadata)
             {
                 var name = pair.Key;
                 var meta = pair.Value;
-                var dataViewType = outputTypePool[name];
-                var caster = casterPool[name];
+                var dataViewType = typePool[name];
+                var caster = casterPool?[name];
+
+                if (name.StartsWith("mlnet.") &&
+                    (name.EndsWith(".unusedInput") || name.EndsWith(".unusedOutput")))
+                    continue;
 
                 OnnxVariableInfo info = null;
                 if (shapeDictionary != null && shapeDictionary.ContainsKey(name))
                 {
-                    // If user provide a shape of a specific tensor, the provided shape overwrites the corresponding one loaded from
-                    // ONNX model file.
-
                     if (!CheckOnnxShapeCompatibility(shapeDictionary[name].ToList(), meta.Dimensions.ToList()))
                         throw Contracts.ExceptParamValue(shapeDictionary[name], nameof(shapeDictionary),
                             "The specified shape " + string.Join(",", shapeDictionary[name]) +
@@ -274,14 +299,16 @@ namespace Microsoft.ML.Transforms.Onnx
                 else
                 {
                     // No user-specified shape is found, so the shape loaded from ONNX model file is used.
-                    info = new OnnxVariableInfo(name, meta.Dimensions.ToList(), meta.ElementType, dataViewType, caster);
+                    // If its not a tensor then its a Sequence or Map, dimensions should be null and type is always NamedOnnxValue.
+                    if (!meta.IsTensor)
+                        info = new OnnxVariableInfo(name, null, typeof(NamedOnnxValue), dataViewType, caster);
+                    else
+                        info = new OnnxVariableInfo(name, meta.Dimensions.ToList(), meta.ElementType, dataViewType, caster);
                 }
 
-                onnxRuntimeOutputInfos.Add(info);
+                onnxVariableInfos.Add(info);
             }
-
-            // Create a view to the used ONNX model from ONNXRuntime's perspective.
-            ModelInfo = new OnnxModelInfo(onnxRuntimeInputInfos, onnxRuntimeOutputInfos);
+            return onnxVariableInfos;
         }
 
         /// <summary>
@@ -303,64 +330,65 @@ namespace Microsoft.ML.Transforms.Onnx
         {
             if (left.Count() != right.Count())
                 return false;
-            foreach(var (l, r) in left.Zip(right, (l, r) => (l, r)))
+            foreach (var (l, r) in left.Zip(right, (l, r) => (l, r)))
             {
                 // Along a specific axis, if any of left or right have unknown dimension, the overwriting can happen.
                 if (l != r && l > 0 && r > 0)
                     return false;
-            };
+            }
             return true;
         }
 
         /// <summary>
         /// Create an OnnxModel from a byte[]. Usually, a ONNX model is consumed by <see cref="OnnxModel"/> as a file.
-        /// With <see cref="CreateFromBytes(byte[])"/> and <see cref="CreateFromBytes(byte[], int?, bool, IDictionary{string, int[]})"/>,
+        /// With <see cref="CreateFromBytes(byte[], IHostEnvironment)"/> and <see cref="CreateFromBytes(byte[], IHostEnvironment, int?, bool, IDictionary{string, int[]}, int)"/>,
         /// it's possible to use in-memory model (type: byte[]) to create <see cref="OnnxModel"/>.
         /// </summary>
         /// <param name="modelBytes">Bytes of the serialized model</param>
-        public static OnnxModel CreateFromBytes(byte[] modelBytes)
+        /// <param name="env">IHostEnvironment</param>
+        public static OnnxModel CreateFromBytes(byte[] modelBytes, IHostEnvironment env)
         {
-            return CreateFromBytes(modelBytes, null, false);
+            return CreateFromBytes(modelBytes, env, null, false);
         }
 
         /// <summary>
         /// Create an OnnxModel from a byte[]. Set execution to GPU if required.
         /// Usually, a ONNX model is consumed by <see cref="OnnxModel"/> as a file.
-        /// With <see cref="CreateFromBytes(byte[])"/> and
-        /// <see cref="CreateFromBytes(byte[], int?, bool, IDictionary{string, int[]})"/>,
+        /// With <see cref="CreateFromBytes(byte[], IHostEnvironment)"/> and
+        /// <see cref="CreateFromBytes(byte[], IHostEnvironment, int?, bool, IDictionary{string, int[]}, int)"/>,
         /// it's possible to use in-memory model (type: byte[]) to create <see cref="OnnxModel"/>.
         /// </summary>
         /// <param name="modelBytes">Bytes of the serialized model.</param>
+        /// <param name="env">IHostEnvironment</param>
         /// <param name="gpuDeviceId">GPU device ID to execute on. Null for CPU.</param>
         /// <param name="fallbackToCpu">If true, resumes CPU execution quietly upon GPU error.</param>
         /// <param name="shapeDictionary">User-provided shapes. If the key "myTensorName" is associated
         /// with the value [1, 3, 5], the shape of "myTensorName" will be set to [1, 3, 5].
         /// The shape loaded from <paramref name="modelBytes"/> would be overwritten.</param>
+        /// <param name="recursionLimit">Optional, specifies the Protobuf CodedInputStream recursion limit. Default value is 100.</param>
         /// <returns>An <see cref="OnnxModel"/></returns>
-        public static OnnxModel CreateFromBytes(byte[] modelBytes, int? gpuDeviceId = null, bool fallbackToCpu = false,
-            IDictionary<string, int[]> shapeDictionary = null)
+        public static OnnxModel CreateFromBytes(byte[] modelBytes, IHostEnvironment env, int? gpuDeviceId = null, bool fallbackToCpu = false,
+            IDictionary<string, int[]> shapeDictionary = null, int recursionLimit = 100)
         {
-            var tempModelDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-            Directory.CreateDirectory(tempModelDir);
-
-            var tempModelFile = Path.Combine(tempModelDir, "model.onnx");
+            var tempModelFile = Path.Combine(((IHostEnvironmentInternal)env).TempFilePath, Path.GetRandomFileName());
             File.WriteAllBytes(tempModelFile, modelBytes);
             return new OnnxModel(tempModelFile, gpuDeviceId, fallbackToCpu,
-                ownModelFile: true, shapeDictionary: shapeDictionary);
+                ownModelFile: true, shapeDictionary: shapeDictionary, recursionLimit);
         }
 
         /// <summary>
         /// Uses an open session to score a list of NamedOnnxValues.
         /// </summary>
         /// <param name="inputNamedOnnxValues">The NamedOnnxValues to score.</param>
+        /// <param name="outputColumns">The active output columns.</param>
         /// <returns>Resulting output NamedOnnxValues list.</returns>
-        public IReadOnlyCollection<NamedOnnxValue> Run(List<NamedOnnxValue> inputNamedOnnxValues)
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(List<NamedOnnxValue> inputNamedOnnxValues, List<string> outputColumns)
         {
-            return _session.Run(inputNamedOnnxValues);
+            return _session.Run(inputNamedOnnxValues, outputColumns);
         }
 
         /// <summary>
-        /// Flag used to indicate if the unmanaged resources (aka the model file <see cref="ModelFile"/>
+        /// Flag used to indicate if the unmanaged resources (aka the model file handle <see cref="ModelStream"/>
         /// and <see cref="_session"/>) have been deleted.
         /// </summary>
         private bool _disposed;
@@ -372,8 +400,7 @@ namespace Microsoft.ML.Transforms.Onnx
         }
 
         /// <summary>
-        /// There are two unmanaged resources we can dispose, <see cref="_session"/> and <see cref="ModelFile"/>
-        /// if <see cref="_ownModelFile"/> is <see langword="true"/>.
+        /// There are two unmanaged resources we can dispose, <see cref="_session"/> and <see cref="ModelStream"/>
         /// </summary>
         /// <param name="disposing"></param>
         private void Dispose(bool disposing)
@@ -385,9 +412,8 @@ namespace Microsoft.ML.Transforms.Onnx
                 {
                     // First, we release the resource token by ONNXRuntime.
                     _session.Dispose();
-                    // Second, we delete the model file if that file is not created by the user.
-                    if (_ownModelFile && File.Exists(ModelFile))
-                        File.Delete(ModelFile);
+                    // Second, Dispose of the model file stream.
+                    ModelStream.Dispose();
                 }
                 _disposed = true;
             }
@@ -401,7 +427,7 @@ namespace Microsoft.ML.Transforms.Onnx
 
     internal sealed class OnnxUtils
     {
-        private static HashSet<Type> _onnxTypeMap =
+        private static readonly HashSet<Type> _onnxTypeMap =
             new HashSet<Type>
                 {
                      typeof(Double),
@@ -411,9 +437,13 @@ namespace Microsoft.ML.Transforms.Onnx
                      typeof(Int64),
                      typeof(UInt16),
                      typeof(UInt32),
-                     typeof(UInt64)
+                     typeof(UInt64),
+                     typeof(ReadOnlyMemory<Char>),
+                     typeof(Boolean),
+                     typeof(SByte),
+                     typeof(Byte)
                 };
-        private static Dictionary<Type, InternalDataKind> _typeToKindMap=
+        private static readonly Dictionary<Type, InternalDataKind> _typeToKindMap =
             new Dictionary<Type, InternalDataKind>
                 {
                     { typeof(Single) , InternalDataKind.R4},
@@ -426,6 +456,8 @@ namespace Microsoft.ML.Transforms.Onnx
                     { typeof(UInt64) , InternalDataKind.U8},
                     { typeof(String) , InternalDataKind.TX},
                     { typeof(Boolean) , InternalDataKind.BL},
+                    { typeof(SByte) , InternalDataKind.I1},
+                    { typeof(Byte) , InternalDataKind.U1},
                 };
 
         /// <summary>
@@ -439,7 +471,11 @@ namespace Microsoft.ML.Transforms.Onnx
         {
             if (!_onnxTypeMap.Contains(typeof(T)))
                 throw new NotImplementedException($"Not implemented type {typeof(T)}");
-            return NamedOnnxValue.CreateFromTensor<T>(name, new DenseTensor<T>(new T[] { data }, new int[] { 1 }));
+
+            if (typeof(T) == typeof(ReadOnlyMemory<char>))
+                return NamedOnnxValue.CreateFromTensor<string>(name, new DenseTensor<string>(new string[] { data.ToString() }, new int[] { 1, 1 }));
+
+            return NamedOnnxValue.CreateFromTensor<T>(name, new DenseTensor<T>(new T[] { data }, new int[] { 1, 1 }));
         }
 
         /// <summary>
@@ -455,7 +491,19 @@ namespace Microsoft.ML.Transforms.Onnx
         {
             if (!_onnxTypeMap.Contains(typeof(T)))
                 throw new NotImplementedException($"Not implemented type {typeof(T)}");
-            return NamedOnnxValue.CreateFromTensor<T>(name, new DenseTensor<T>(data.ToArray(), shape.Select(x => (int)x).ToArray()));
+
+            var dimensions = shape.Select(x => (int)x).ToArray();
+
+            if (typeof(T) == typeof(ReadOnlyMemory<char>))
+            {
+                string[] stringData = new string[data.Length];
+                for (int i = 0; i < data.Length; i++)
+                    stringData[i] = data[i].ToString();
+
+                return NamedOnnxValue.CreateFromTensor<string>(name, new DenseTensor<string>(stringData, dimensions));
+            }
+
+            return NamedOnnxValue.CreateFromTensor<T>(name, new DenseTensor<T>(data.ToArray(), dimensions));
         }
 
         /// <summary>
@@ -467,7 +515,7 @@ namespace Microsoft.ML.Transforms.Onnx
         public static PrimitiveDataViewType OnnxToMlNetType(Type type)
         {
             if (!_typeToKindMap.ContainsKey(type))
-               throw Contracts.ExceptNotSupp("Onnx type not supported", type);
+                throw Contracts.ExceptNotSupp("Onnx type not supported", type);
             return ColumnTypeExtensions.PrimitiveTypeFromKind(_typeToKindMap[type]);
         }
     }

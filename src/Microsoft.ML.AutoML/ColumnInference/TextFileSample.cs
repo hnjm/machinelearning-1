@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -114,7 +114,7 @@ namespace Microsoft.ML.AutoML
             var lineCount = firstChunk.Count(x => x == '\n');
             if (lineCount == 0)
             {
-                throw new ArgumentException("Counldn't identify line breaks. Provided file is not text?");
+                throw new ArgumentException("Couldn't identify line breaks. Provided file is not text?");
             }
 
             long approximateRowCount = (long)(lineCount * fileSize * 1.0 / firstChunk.Length);

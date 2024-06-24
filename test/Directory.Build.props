@@ -2,13 +2,15 @@
   <Import Project="..\Directory.Build.props" />
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.1</TargetFramework>
-    <TargetFramework Condition="$(Configuration.EndsWith('-netfx'))">net461</TargetFramework>
-    <TargetFramework Condition="$(Configuration.EndsWith('-netcoreapp3_0'))">netcoreapp3.0</TargetFramework>
-    <RuntimeIdentifier Condition="'$(TargetFramework)' == 'net461'">win-x64</RuntimeIdentifier>
+    <TargetFrameworks>net6.0;net462;net8.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(OS)' != 'Windows_NT'">net6.0</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('OSX')) AND '$(TargetArchitecture)' == 'arm64'">net6.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(TestTargetFramework)' != ''">$(TestTargetFramework)</TargetFrameworks>
+    <RuntimeIdentifier Condition="'$(TargetFramework)' == 'net462'">win-x64</RuntimeIdentifier>
+    <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-
+    <GenerateDependencyFile>true</GenerateDependencyFile>
     <!--
       Don't warn about missing documentation in test projects.
 
@@ -16,36 +18,37 @@
       CS1591: Missing XML comment for publicly visible type or member 'Type_or_Member'
       CS1712: Type parameter 'parameter' has no matching typeparam tag in the XML comment on 'Type_or_Member' (but other type parameters do)
     -->
-    <NoWarn>$(NoWarn),1573,1591,1712</NoWarn>
+    <NoWarn>$(NoWarn);1573;1591;1712</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
     <VSTestLogger>trx</VSTestLogger>
     <VSTestResultsDirectory>$(OutputPath)</VSTestResultsDirectory>
-    <AssemblyOriginatorKeyFile>$(ToolsDir)Test.snk</AssemblyOriginatorKeyFile>
+    <CopyLocalLockFileAssemblies Condition="'$(Coverage)' != 'true'">true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
-  
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
-    <PackageReference Include="xunit" Version="2.4.0" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0" />
-    <PackageReference Include="Microsoft.DotNet.XUnitExtensions" Version="2.4.0-prerelease-63213-02" />
-    <PackageReference Include="coverlet.msbuild" Version="$(CoverletVersion)" />
+    <PackageReference Include="MSTest.TestFramework" Version="$(MSTestTestFrameworkVersion)" />
+    <PackageReference Include="MSTest.TestAdapter" Version="$(MSTestTestAdapterVersion)" />
+    <PackageReference Include="Xunit.Combinatorial" Version="$(XunitCombinatorialVersion)" />
+    <PackageReference Include="Microsoft.DotNet.XUnitExtensions" Version="$(MicrosoftDotNetXUnitExtensionsVersion)" />
+    <PackageReference Include="coverlet.collector" Version="$(CoverletCollectorVersion)" />
+    <PackageReference Include="Newtonsoft.Json" Version="$(NewtonsoftJsonVersion)" />
+
+    <!-- workaround stale references in test packages by 
+         1) updating NETStandard.Library - the newer version brings less references on netstandard2.0 compatible frameworks.
+         2) updating Microsoft.NETCore.Targets - the newer version prevents .NETCore 1.x era runtime.* packages from being referenced. -->
+    <PackageReference Include="NETStandard.Library" Version="2.0.3" />
+    <PackageReference Include="Microsoft.NETCore.Targets" Version="5.0.0" />
   </ItemGroup>
 
-  <PropertyGroup Condition="'$(Coverage)' == 'true'">
-      <CollectCoverage>true</CollectCoverage>
-      <SingleHit>true</SingleHit>
-      <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies> <!-- https://github.com/tonerdo/coverlet/issues/72 -->
-      <CoverletOutputFormat>opencover</CoverletOutputFormat>
-      <CoverletOutput>$(BaseOutputPath)$(PlatformConfig)\coverage\$(MSBuildProjectName).coverage</CoverletOutput>
-      <Include>[Microsoft.ML.*]*</Include>
-      <!-- Excluding for perf reasons. These classes have tests that can be run conditionally
-           but they need to be migrated. Excluding these classes should have very minimal effect on code coverage.
-      -->
-      <Exclude>[*]Microsoft.ML.*Contracts*,[*]Microsoft.ML.Internal.Utilities*,[*]Microsoft.ML.Data.VBuffer*</Exclude>
-      <ExcludeByAttribute>Obsolete,ExcludeFromCodeCoverage</ExcludeByAttribute>
-      <ExcludeByFile>$(BaseOutputPath)..\src\Microsoft.ML.OnnxConverter\OnnxMl.cs,$(BaseOutputPath)..\src\Microsoft.ML.TensorFlow\TensorFlow\Buffer.cs,$(BaseOutputPath)..\src\Microsoft.ML.TensorFlow\TensorFlow\Tensor.cs,$(BaseOutputPath)..\src\Microsoft.ML.TensorFlow\TensorFlow\Tensorflow.cs</ExcludeByFile>
-  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference
+      Condition="'$(UseMLCodeAnalyzer)' != 'false' and '$(MSBuildProjectExtension)' == '.csproj' and '$(UsingMicrosoftNoTargetsSdk)' != 'true'"
+      Include="$(MSBuildThisFileDirectory)\..\tools-local\Microsoft.ML.InternalCodeAnalyzer\Microsoft.ML.InternalCodeAnalyzer.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>Analyzer</OutputItemType>
+    </ProjectReference>
+  </ItemGroup>
 
 </Project>

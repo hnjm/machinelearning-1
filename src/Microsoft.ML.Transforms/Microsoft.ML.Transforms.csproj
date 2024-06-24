@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <IncludeInPackage>Microsoft.ML</IncludeInPackage>
     <DefineConstants>CORECLR</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -43,6 +42,10 @@
     <EmbeddedResource Include="Text\StopWords\Russian.txt" />
     <EmbeddedResource Include="Text\StopWords\Spanish.txt" />
     <EmbeddedResource Include="Text\StopWords\Swedish.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Reflection.Emit" Version="$(SystemReflectionEmitVersion)" />
   </ItemGroup>
 
   <ItemGroup>

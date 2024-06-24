@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -12,6 +12,7 @@ using Microsoft.ML.Model;
 using Microsoft.ML.Numeric;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.Trainers;
+using static Microsoft.ML.Trainers.AveragedLinearOptions;
 
 [assembly: LoadableClass(AveragedPerceptronTrainer.Summary, typeof(AveragedPerceptronTrainer), typeof(AveragedPerceptronTrainer.Options),
     new[] { typeof(SignatureBinaryClassifierTrainer), typeof(SignatureTrainer), typeof(SignatureFeatureScorerTrainer) },
@@ -39,6 +40,7 @@ namespace Microsoft.ML.Trainers
     /// | Is normalization required? | Yes |
     /// | Is caching required? | No |
     /// | Required NuGet in addition to Microsoft.ML | None |
+    /// | Exportable to ONNX | Yes |
     ///
     /// ### Training Algorithm Details
     /// The perceptron is a classification algorithm that makes its predictions by finding a separating hyperplane.
@@ -75,12 +77,22 @@ namespace Microsoft.ML.Trainers
 
         private readonly Options _args;
 
+        internal class AveragedPerceptronDefault : AveragedDefault
+        {
+            public new const int NumberOfIterations = 10;
+        }
+
         /// <summary>
         /// Options for the <see cref="AveragedPerceptronTrainer"/> as used in
         /// <see cref="Microsoft.ML.StandardTrainersCatalog.AveragedPerceptron(BinaryClassificationCatalog.BinaryClassificationTrainers, Options)"/>.
         /// </summary>
         public sealed class Options : AveragedLinearOptions
         {
+            public Options()
+            {
+                NumberOfIterations = AveragedPerceptronDefault.NumberOfIterations;
+            }
+
             /// <summary>
             /// A custom <a href="https://en.wikipedia.org/wiki/Loss_function">loss</a>.
             /// </summary>
@@ -160,10 +172,10 @@ namespace Microsoft.ML.Trainers
             string labelColumnName = DefaultColumnNames.Label,
             string featureColumnName = DefaultColumnNames.Features,
             IClassificationLoss lossFunction = null,
-            float learningRate = Options.AveragedDefault.LearningRate,
-            bool decreaseLearningRate = Options.AveragedDefault.DecreaseLearningRate,
-            float l2Regularization = Options.AveragedDefault.L2Regularization,
-            int numberOfIterations = Options.AveragedDefault.NumberOfIterations)
+            float learningRate = AveragedPerceptronDefault.LearningRate,
+            bool decreaseLearningRate = AveragedPerceptronDefault.DecreaseLearningRate,
+            float l2Regularization = AveragedPerceptronDefault.L2Regularization,
+            int numberOfIterations = AveragedPerceptronDefault.NumberOfIterations)
             : this(env, new Options
             {
                 LabelColumnName = labelColumnName,

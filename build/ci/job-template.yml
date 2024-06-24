@@ -1,3 +1,5 @@
+#TODO: Need to update build documentation.
+
 parameters:
   name: ''
   architecture: x64
@@ -5,14 +7,43 @@ parameters:
   pool: {}
   customMatrixes: ''
   codeCoverage: false
+  nightlyBuild: false
+  innerLoop: false
+  runSpecific: false
   container: ''
+  useVSTestTask: false
+  helixQueue: ''
+  testTargetFramework: ''
 
 jobs:
   - job: ${{ parameters.name }}
-    ${{ if eq(parameters.codeCoverage, 'false') }}:
-      timeoutInMinutes: 75
+    ${{ if eq(parameters.nightlyBuild, 'true') }}:
+      timeoutInMinutes: 30
+    ${{ if and(eq(parameters.nightlyBuild, 'false'), eq(parameters.codeCoverage, 'false')) }}:
+      timeoutInMinutes: 120
     ${{ if eq(parameters.codeCoverage, 'true') }}:
-      timeoutInMinutes: 60
+      timeoutInMinutes: 150
+    cancelTimeoutInMinutes: 10
+    variables:
+      dotnetPath: $(Build.SourcesDirectory)/.dotnet/dotnet
+      nugetFeed: https://pkgs.dev.azure.com/dnceng/public/_packaging/MachineLearning/nuget/v3/index.json
+      nightlyBuildProjPath: $(Build.SourcesDirectory)/test/Microsoft.ML.NightlyBuild.Tests/Microsoft.ML.NightlyBuild.Tests.csproj
+      nightlyBuildRunPath: $(Build.SourcesDirectory)/artifacts/bin/Microsoft.ML.NightlyBuild.Tests/$(_configuration)/$(_targetFramework)
+      runNightlyBuildProj: $(Build.SourcesDirectory)/test/run-night-build-tests.proj
+      packageUpdaterProjPath: $(Build.SourcesDirectory)/test/Microsoft.ML.NugetPackageVersionUpdater/Microsoft.ML.NugetPackageVersionUpdater.csproj
+      versionFilePath: $(Build.SourcesDirectory)/test/Microsoft.ML.NugetPackageVersionUpdater/latest_versions.txt
+      PROCDUMP_PATH: '$(Build.SourcesDirectory)/Tools/ProcDump/'
+      ${{ if eq(parameters.buildScript, 'build.cmd') }}:
+        spaceValue: ' '
+      ${{ if eq(parameters.buildScript, './build.sh') }}:
+        spaceValue: '%20'
+      ${{ if and(contains(parameters.pool.demands, 'ubuntu'), contains(parameters.name, 'cross')) }}:
+        ROOTFS_DIR: '/crossrootfs/${{ parameters.architecture }}'
+      ${{ if eq(parameters.codeCoverage, 'true') }}:
+        hardLink: ''
+      ${{ if eq(parameters.codeCoverage, 'false') }}:
+        hardLink: '/p:CreateHardLinksForCopyLocalIfPossible=True'
+      testTargetFramework: '/p:TestTargetFramework=$(_targetFramework)'
     strategy:
       matrix:
         ${{ if eq(parameters.customMatrixes, '') }}:
@@ -20,37 +51,135 @@ jobs:
             _configuration: Debug
             _config_short: D
             _includeBenchmarkData: false
+            _targetFramework: net6.0
           Release_Build:
             _configuration: Release
             _config_short: R
             _includeBenchmarkData: true
+            _targetFramework: net6.0
         ${{ if ne(parameters.customMatrixes, '') }}:
           ${{ insert }}: ${{ parameters.customMatrixes }}
-    
+
     pool: ${{ parameters.pool }}
     ${{ if ne(parameters.container, '') }}:
       container: ${{ parameters.container }}
 
     steps:
-    - ${{ if eq(parameters.pool.name, 'Hosted macOS High Sierra') }}:
-      - script: brew update && brew install https://raw.githubusercontent.com/Homebrew/homebrew-core/f5b1ac99a7fba27c19cee0bc4f036775c889b359/Formula/libomp.rb && brew install mono-libgdiplus gettext && brew link gettext --force && brew link libomp --force
-        displayName: Install build dependencies
-    - script: ${{ parameters.buildScript }} -$(_configuration) -buildArch=${{ parameters.architecture }}
+    # Extra MacOS step required to install OS-specific dependencies
+    - ${{ if and(contains(parameters.pool.vmImage, 'macOS'), not(contains(parameters.name, 'cross')))  }}:
+      - script: export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=TRUE && brew unlink libomp && brew install $(Build.SourcesDirectory)/build/libomp.rb --build-from-source --formula
+        displayName: Install MacOS build dependencies
+    # Extra Apple MacOS step required to install OS-specific dependencies
+    - ${{ if and(contains(parameters.pool.vmImage, 'macOS'), contains(parameters.name, 'cross'))  }}:
+      - script: brew update && brew install -f --overwrite python@3.12 && brew install libomp && brew link libomp --force
+        displayName: Install MacOS ARM build dependencies
+    - ${{ if and( eq(parameters.nightlyBuild, 'true'), eq(parameters.pool.vmImage, 'ubuntu-18.04')) }}:
+      - bash: echo "##vso[task.setvariable variable=LD_LIBRARY_PATH]$(nightlyBuildRunPath):$LD_LIBRARY_PATH"
+        displayName: Set LD_LIBRARY_PATH for Ubuntu and CentOS to locate Native shared library in current running path
+    - script: ${{ parameters.buildScript }} -configuration $(_configuration) /p:TargetArchitecture=${{ parameters.architecture }} /p:TestArchitectures=${{ parameters.architecture }} /p:Coverage=${{ parameters.codeCoverage }} $(testTargetFramework) /p:CreateHardLinksForCopyFilesToOutputDirectoryIfPossible=True $(hardLink)
       displayName: Build
-    - script: ${{ parameters.buildScript }} -- /t:DownloadExternalTestFiles /p:IncludeBenchmarkData=$(_includeBenchmarkData)
-      displayName: Download Benchmark Data
-    - script: ${{ parameters.buildScript }} -$(_configuration) -runtests -coverage=${{ parameters.codeCoverage }}
-      displayName: Run Tests.
-    - script: $(Build.SourcesDirectory)/Tools/dotnetcli/dotnet msbuild build/Codecoverage.proj /p:CodeCovToken=$(CODECOV_TOKEN)
+    - ${{ if eq(parameters.pool.vmImage, 'macOS-10.15') }}:
+      - task: Bash@3
+        inputs:
+          targetType: inline
+          script: cd packages;find . -type d -path "*/runtimes/linux-*"  -exec rm -rv {} +;find . -type d -path "*/runtimes/win-*"  -exec rm -rv {} +;cd ..
+        displayName: Clean up non-MacOS runtime folders of NuGet Packages to save disk space
+    - ${{ if eq(parameters.pool.vmImage, 'ubuntu-18.04') }}:
+      - task: Bash@3
+        inputs:
+          targetType: inline
+          script: cd packages;find . -type d -path "*/runtimes/osx-*"  -exec rm -rv {} +;find . -type d -path "*/runtimes/win-*"  -exec rm -rv {} +;cd ..
+        displayName: Clean up non-Linux runtime folders of NuGet Packages to save disk space
+    - ${{ if eq(parameters.buildScript, 'build.cmd') }}:
+      - script: dir /s "$(Build.SourcesDirectory)"
+        displayName: show bin folder disk usage
+      - task: PowerShell@2
+        inputs:
+          targetType: inline
+          script:  Get-ChildItem -Recurse -Directory | where {$_.FullName -like '*\runtimes\*'} | where {$_.FullName -notlike '*\artifacts\pkgassets*'} | where {$_.FullName -notlike '*\win*'} | sort length -Descending | Remove-Item -Recurse -Confirm:$false -Force -ErrorAction SilentlyContinue
+        displayName: Clean up non-Windows runtime folders of NuGet Packages to save disk space
+    - ${{ if eq(parameters.nightlyBuild, 'true') }}:
+      - script: $(dotnetPath) restore $(nightlyBuildProjPath)
+        displayName: Restore nightly build project
+      - script: $(dotnetPath) list $(nightlyBuildProjPath) package --source $(nugetFeed) --outdated > $(versionFilePath)
+        displayName: List latest package versions
+      - script: $(dotnetPath) run --project $(packageUpdaterProjPath)
+        displayName: Update package versions for nightly build
+      - ${{ if eq(parameters.buildScript, 'build.cmd') }}:
+        - powershell: |
+                    Get-ChildItem -Path  '.\artifacts\bin\*' -Recurse |
+                    Select -ExpandProperty FullName |
+                    Where {$_ -NotMatch '.*\\Microsoft\.ML\.NightlyBuild\.Tests.*|.*\\Native.*'} |
+                    sort length -Descending |
+                    Remove-Item -force
+                    Write-Output "Done cleaning up usless project..."
+          displayName: Clean up useless project
+      - script: $(dotnetPath) msbuild -restore $(nightlyBuildProjPath) /p:ReferenceTypeForTestFramework="Nuget" /p:Configuration=$(_configuration) /p:TargetArchitecture=${{ parameters.architecture }} $(testTargetFramework)
+        displayName: Build Nightly-Build Project with latest package versions
+      - script: $(dotnetPath) msbuild $(runNightlyBuildProj) /t:RunNightlyBuildTests /p:Configuration=$(_configuration) /p:TargetArchitecture=${{ parameters.architecture }} /p:TestArchitectures=${{ parameters.architecture }} $(testTargetFramework)
+        displayName: Run Nightly Build Tests
+    - ${{ if eq(parameters.nightlyBuild, 'false') }}:
+      - ${{ if eq(parameters.innerLoop, 'false') }}:
+        - ${{ if and(eq(parameters.runSpecific, 'false'), eq(parameters.useVSTestTask, 'false')) }}:
+          - script: set PATH=%PATH%;%USERPROFILE%\.nuget\packages\libtorch-cpu-win-x64\2.1.0.1\runtimes\win-x64\native;%USERPROFILE%\.nuget\packages\torchsharp\0.101.5\runtimes\win-x64\native & ${{ parameters.buildScript }} /p:Build=false -configuration $(_configuration) /p:TargetArchitecture=${{ parameters.architecture }} /p:TestArchitectures=${{ parameters.architecture }} -test -integrationTest /p:Coverage=${{ parameters.codeCoverage }} $(testTargetFramework)
+            displayName: Run All Tests.
+        - ${{ if and(eq(parameters.runSpecific, 'true'), eq(parameters.useVSTestTask, 'false')) }}:
+          - script: ${{ parameters.buildScript }} /p:Build=false -configuration $(_configuration) /p:TargetArchitecture=${{ parameters.architecture }} /p:TestArchitectures=${{ parameters.architecture }} -test -integrationTest /p:TestRunnerAdditionalArguments='-trait$(spaceValue)Category=RunSpecificTest' /p:Coverage=${{ parameters.codeCoverage }} $(testTargetFramework)
+            displayName: Run Specific Tests.
+        - ${{ if and(eq(parameters.buildScript, 'build.cmd'), eq(parameters.useVSTestTask, 'true')) }}:
+          - task: VSTest@2
+            displayName: Run Tests with VSTest
+            inputs:
+              testSelector: testAssemblies
+              testAssemblyVer2: |
+                **\*test.dll
+                **\*tests.dll
+                !**\obj\**
+              runSettingsFile: $(Build.SourcesDirectory)/tools-local/vstest.runsettings
+              searchFolder: '$(System.DefaultWorkingDirectory)'
+              vstestLocationMethod: 'version'
+              vsTestVersion: 'latest'
+              runInParallel: False
+              runTestsInIsolation: True
+              codeCoverageEnabled: ${{ parameters.codeCoverage }}
+              otherConsoleOptions: ${{ parameters.vsTestConfiguration }}
+              dontDistribute: True
+              diagnosticsEnabled: False
+              collectDumpOn: onAbortOnly
+              publishRunAttachments: true
+      - ${{ if eq(parameters.innerLoop, 'true') }}:
+        - ${{ if eq(parameters.codeCoverage, True) }}:
+          - script: ${{ parameters.buildScript }} /p:Build=false -configuration $(_configuration) /p:TargetArchitecture=${{ parameters.architecture }} /p:TestArchitectures=${{ parameters.architecture }} -test -integrationTest /p:TestRunnerAdditionalArguments='-notrait$(spaceValue)Category=SkipInCI' /p:Coverage=${{ parameters.codeCoverage }} $(testTargetFramework)
+            displayName: Run CI Tests.
+        - ${{ if eq(parameters.codeCoverage, False) }}:
+          - template: /build/ci/send-to-helix.yml
+            parameters:
+              HelixTargetQueues: ${{ parameters.helixQueue }}
+              Configuration: $(_configuration)
+              Architecture: ${{ parameters.architecture }}
+              ${{ if eq(parameters.buildScript, 'build.cmd') }}:
+                MsBuildScript: 'powershell $(Build.SourcesDirectory)/eng/common/msbuild.ps1'
+                WarnAsError: '-warnAsError 0'
+                TestTargetFramework: '$(testTargetFramework)'
+              ${{ if eq(parameters.buildScript, './build.sh') }}:
+                MsBuildScript: '$(Build.SourcesDirectory)/eng/common/msbuild.sh'
+                WarnAsError: '--warnAsError false'
+                TestTargetFramework: '$(testTargetFramework)'
+    - script: $(dotnetPath) msbuild -restore build/Codecoverage.proj
       displayName: Upload coverage to codecov.io
       condition: and(succeeded(), eq(${{ parameters.codeCoverage }}, True))
     - task: PublishTestResults@2
       displayName: Publish Test Results
       condition: succeededOrFailed()
       inputs:
-        testRunner: 'vSTest'
-        searchFolder: '$(System.DefaultWorkingDirectory)/bin'
-        testResultsFiles: '**/*.trx'
+        testRunner: 'xUnit'
+        searchFolder: '$(Build.SourcesDirectory)/artifacts/TestResults'
+        # Upload all test results except performance test project. On CI by default performance tests
+        # will not run and test result files will still be generate without details. Avoid uploading
+        # performance test result to avoid warnings on publish test result stage.
+        testResultsFiles: |
+          **/*.xml
+          !**/*PerformanceTests*.xml
         testRunTitle: Machinelearning_Tests_${{ parameters.name }}_$(_configuration)_$(Build.BuildNumber)
         configuration: $(_configuration)
         mergeTestResults: true
@@ -59,16 +188,33 @@ jobs:
       condition: not(succeeded())
       inputs:
         sourceFolder: $(Build.SourcesDirectory)
-        contents: '?(msbuild.*|binclash.log|init-tools.log)'
+        contents: 'artifacts/log/**'
         targetFolder: $(Build.ArtifactStagingDirectory)
     - task: CopyFiles@2
       displayName: Stage test output
       condition: not(succeeded())
       inputs:
-        sourceFolder: $(Build.SourcesDirectory)/bin
+        sourceFolder: $(Build.SourcesDirectory)
         contents: |
-          **/TestOutput/**/*
-          **/*.trx
+          artifacts/TestResults/**
+        targetFolder: $(Build.ArtifactStagingDirectory)
+    - task: CopyFiles@2
+      displayName: Stage baseline files
+      condition: not(succeeded())
+      inputs:
+        sourceFolder: $(Build.SourcesDirectory)
+        contents: |
+          artifacts/bin/**/TestOutput/**
+        targetFolder: $(Build.ArtifactStagingDirectory)
+    - task: CopyFiles@2
+      displayName: Stage process dump and pdb if any
+      condition: not(succeeded())
+      inputs:
+        sourceFolder: $(Build.SourcesDirectory)
+        contents: |
+          *.dmp
+          CrashDumps/*.dmp
+          artifacts/bin/**/*.pdb
         targetFolder: $(Build.ArtifactStagingDirectory)
     - task: PublishBuildArtifacts@1
       displayName: Publish build and test logs
@@ -77,35 +223,18 @@ jobs:
         pathToPublish: $(Build.ArtifactStagingDirectory)
         artifactName: ${{ parameters.name }} $(_config_short)
         artifactType: container
+    - ${{ if eq(parameters.buildScript, './build.sh') }}:
+      - task: Bash@3
+        inputs:
+          targetType: inline
+          script: find ./artifacts/bin -type d -path "*/runtimes"  -exec rm -rv {} +;
+        displayName: Clean up runtime folder for package (Unix)
     - ${{ if eq(parameters.buildScript, 'build.cmd') }}:
-      - powershell: |
-                  $taskListOutput = & TaskList /FI "IMAGENAME eq dotnet.exe" | Out-String
-                  if ($taskListOutput.Contains("dotnet.exe"))
-                  {
-                      Write-Output "Killing dotnet.exe processes..."
-                      & taskkill /IM dotnet.exe /F
-                  }
-
-                  if (Test-Path .\packages\)
-                  {
-                      Write-Output "Removing nuget cache dir..."
-                      Remove-Item -Force -Recurse .\packages\
-                  }
-
-                  if (Test-Path .\test\data\external\)
-                  {
-                      Write-Output "Removing external test data..."
-                      Remove-Item -Force -Recurse .\test\data\external\
-                  }
-
-                  mkdir .\tmp\
-                  Move-Item .\bin\obj\packages .\tmp\
-                  Write-Output "Removing bin dir..."
-                  Remove-Item -Force -Recurse .\bin\
-                  mkdir .\bin\obj\
-                  Move-Item .\tmp\packages\ .\bin\obj\
-                  Remove-Item -Force -Recurse .\tmp\
-                  Write-Output "Done cleaning up binary folder..."
-        displayName: Clean up test data
-    - script: ${{ parameters.buildScript }} -buildPackages
-      displayName: Build Packages
+      - task: PowerShell@2
+        inputs:
+          targetType: inline
+          script: Get-ChildItem -Path  '.\artifacts\bin' -Recurse | Where-Object {$_.FullName -like "*runtimes*"} | Remove-Item -Recurse -Confirm:$false -Force
+        displayName: Clean up runtime folder for package (Unix)
+    - ${{ if eq(parameters.nightlyBuild, 'false') }}:
+      - script: ${{ parameters.buildScript }} /p:Build=false -pack -ci -configuration $(_configuration) /p:TargetArchitecture=${{ parameters.architecture }} /p:TestArchitectures=${{ parameters.architecture }} $(testTargetFramework)
+        displayName: Build Packages

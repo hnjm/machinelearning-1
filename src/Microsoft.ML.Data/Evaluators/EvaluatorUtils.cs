@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -156,7 +156,7 @@ namespace Microsoft.ML.Data
         }
 
         /// <summary>
-        /// Find the optional auxilliary score column to use. If <paramref name="name"/> is specified, that is used.
+        /// Find the optional auxiliary score column to use. If <paramref name="name"/> is specified, that is used.
         /// Otherwise, if <paramref name="colScore"/> is part of a score set, this looks in the score set for a column
         /// with the given <paramref name="valueKind"/>. If none is found, it returns <see langword="null"/>.
         /// </summary>
@@ -1035,7 +1035,13 @@ namespace Microsoft.ML.Data
                         names = editor.Commit();
                     }
                     foreach (var name in names.Items(all: true))
-                        metricNames.Add(string.Format("{0}{1}", metricName, name.Value));
+                    {
+                        var tryNaming = string.Format(metricName, name.Value);
+                        if (tryNaming == metricName) // metricName wasn't a format string, so just append slotname
+                            tryNaming = (string.Format("{0}{1}", metricName, name.Value));
+
+                        metricNames.Add(tryNaming);
+                    }
                 }
             }
             ch.Assert(metricNames.Count == metricCount);
@@ -1441,7 +1447,7 @@ namespace Microsoft.ML.Data
 
         private static List<ReadOnlyMemory<char>> GetPredictedLabelNames(in VBuffer<ReadOnlyMemory<char>> labelNames, int[] labelIndexToConfIndexMap)
         {
-            List <ReadOnlyMemory<char>> result = new List<ReadOnlyMemory<char>>();
+            List<ReadOnlyMemory<char>> result = new List<ReadOnlyMemory<char>>();
             var values = labelNames.GetValues();
             for (int i = 0; i < values.Length; i++)
             {
@@ -1585,7 +1591,7 @@ namespace Microsoft.ML.Data
         internal static string GetConfusionTableAsString(ConfusionMatrix confusionMatrix, bool isWeighted)
         {
             string prefix = isWeighted ? "Weighted " : "";
-            int numLabels = confusionMatrix?.Counts == null? 0: confusionMatrix.Counts.Count;
+            int numLabels = confusionMatrix?.Counts == null ? 0 : confusionMatrix.Counts.Count;
 
             int colWidth = numLabels == 2 ? 8 : 5;
             int maxNameLen = confusionMatrix.PredictedClassesIndicators.Max(name => name.Length);

@@ -1,8 +1,8 @@
-﻿// Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.IO;
+using System;
 using System.Threading;
 
 namespace Microsoft.ML.AutoML
@@ -42,13 +42,13 @@ namespace Microsoft.ML.AutoML
         public CancellationToken CancellationToken { get; set; }
 
         /// <summary>
-        /// This is a pointer to a directory where all models trained during the AutoML experiment will be saved.
+        /// This is the name of the directory where all models trained during the AutoML experiment will be saved.
         /// If <see langword="null"/>, models will be kept in memory instead of written to disk.
         /// (Please note: for an experiment with high runtime operating on a large dataset, opting to keep models in
         /// memory could cause a system to run out of memory.)
         /// </summary>
-        /// <value>The default value is the directory named "Microsoft.ML.AutoML" in the current user's temporary folder.</value>
-        public DirectoryInfo CacheDirectory { get; set; }
+        /// <value>The default value is the directory named "Microsoft.ML.AutoML" in the in the location specified by the <see cref="MLContext.TempFilePath"/>.</value>
+        public string CacheDirectoryName { get; set; }
 
         /// <summary>
         /// Whether AutoML should cache before ML.NET trainers.
@@ -57,7 +57,9 @@ namespace Microsoft.ML.AutoML
         /// <value>The default value is <see cref="CacheBeforeTrainer.Auto"/>.</value>
         public CacheBeforeTrainer CacheBeforeTrainer { get; set; }
 
-        internal int MaxModels;
+        public double? MaximumMemoryUsageInMegaByte { get; set; }
+
+        public int MaxModels;
 
         /// <summary>
         /// Initializes a new instance of <see cref="ExperimentSettings"/>.
@@ -66,10 +68,11 @@ namespace Microsoft.ML.AutoML
         {
             MaxExperimentTimeInSeconds = 24 * 60 * 60;
             CancellationToken = default;
-            CacheDirectory = new DirectoryInfo(Path.Combine(Path.GetTempPath(), "Microsoft.ML.AutoML"));
+            CacheDirectoryName = "Microsoft.ML.AutoML";
             CacheBeforeTrainer = CacheBeforeTrainer.Auto;
             MaxModels = int.MaxValue;
         }
+
     }
 
     /// <summary>

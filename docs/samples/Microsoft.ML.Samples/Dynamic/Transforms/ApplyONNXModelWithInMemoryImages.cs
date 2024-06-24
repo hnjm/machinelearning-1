@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Drawing;
 using System.Linq;
 using Microsoft.ML;
 using Microsoft.ML.Data;
@@ -13,7 +12,7 @@ namespace Samples.Dynamic
         public static void Example()
         {
             // Download the squeeznet image model from ONNX model zoo, version 1.2
-            // https://github.com/onnx/models/tree/master/squeezenet or use
+            // https://github.com/onnx/models/tree/master/vision/classification/squeezenet or use
             // Microsoft.ML.Onnx.TestModels nuget.
             // It's a multiclass classifier. It consumes an input "data_0" and
             // produces an output "softmaxout_1".
@@ -26,8 +25,8 @@ namespace Samples.Dynamic
             // input /output of the used ONNX model.
             var dataPoints = new ImageDataPoint[]
             {
-                new ImageDataPoint(Color.Red),
-                new ImageDataPoint(Color.Green)
+                new ImageDataPoint(red: 255, green: 0, blue: 0), // Red color
+                new ImageDataPoint(red: 0, green: 128, blue: 0)  // Green color
             };
 
             // Convert training data to IDataView, the general data type used in
@@ -45,7 +44,7 @@ namespace Samples.Dynamic
             // Map column "data_0" to column "softmaxout_1"
             var pipeline = mlContext.Transforms.ExtractPixels("data_0", "Image")
                 .Append(mlContext.Transforms.ApplyOnnxModel("softmaxout_1",
-                "data_0", modelPath)); 
+                "data_0", modelPath));
 
             var model = pipeline.Fit(dataView);
             var onnx = model.Transform(dataView);
@@ -60,12 +59,12 @@ namespace Samples.Dynamic
                 ImageDataPoint>(onnx, false).ToList();
 
             // The scores are probabilities of all possible classes, so they should
-            // all be positive. 
+            // all be positive.
             foreach (var dataPoint in transformedDataPoints)
             {
                 var firstClassProb = dataPoint.Scores.First();
                 var lastClassProb = dataPoint.Scores.Last();
-                Console.WriteLine("The probability of being the first class is " + 
+                Console.WriteLine("The probability of being the first class is " +
                     (firstClassProb * 100) + "%.");
 
                 Console.WriteLine($"The probability of being the last class is " +
@@ -91,7 +90,7 @@ namespace Samples.Dynamic
 
             // Image will be consumed by ONNX image multiclass classification model.
             [ImageType(height, width)]
-            public Bitmap Image { get; set; }
+            public MLImage Image { get; set; }
 
             // Expected output of ONNX model. It contains probabilities of all
             // classes. Note that the ColumnName below should match the output name
@@ -104,12 +103,19 @@ namespace Samples.Dynamic
                 Image = null;
             }
 
-            public ImageDataPoint(Color color)
+            public ImageDataPoint(byte red, byte green, byte blue)
             {
-                Image = new Bitmap(width, height);
-                for (int i = 0; i < width; ++i)
-                    for (int j = 0; j < height; ++j)
-                        Image.SetPixel(i, j, color);
+                byte[] imageData = new byte[width * height * 4]; // 4 for the red, green, blue and alpha colors
+                for (int i = 0; i < imageData.Length; i += 4)
+                {
+                    // Fill the buffer with the Bgra32 format
+                    imageData[i] = blue;
+                    imageData[i + 1] = green;
+                    imageData[i + 2] = red;
+                    imageData[i + 3] = 255;
+                }
+
+                Image = MLImage.CreateFromPixels(width, height, MLPixelFormat.Bgra32, imageData);
             }
         }
     }

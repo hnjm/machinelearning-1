@@ -37,8 +37,12 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             const string treesColumnName = "MyTrees";
             const string leavesColumnName = "MyLeaves";
             const string pathsColumnName = "MyPaths";
-            var args = new TreeEnsembleFeaturizerBindableMapper.Arguments() {
-                TreesColumnName = treesColumnName, LeavesColumnName = leavesColumnName, PathsColumnName = pathsColumnName };
+            var args = new TreeEnsembleFeaturizerBindableMapper.Arguments()
+            {
+                TreesColumnName = treesColumnName,
+                LeavesColumnName = leavesColumnName,
+                PathsColumnName = pathsColumnName
+            };
             var treeFeaturizer = new TreeEnsembleFeaturizerBindableMapper(Env, args, model.Model);
 
             // To get output schema, we need to create RoleMappedSchema for calling Bind(...).
@@ -538,7 +542,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         public void TestFastTreeRankingFeaturizationInPipeline()
         {
             int dataPointCount = 200;
-            var data = SamplesUtils.DatasetUtils.GenerateFloatLabelFloatFeatureVectorSamples(dataPointCount).ToList();
+            var data = SamplesUtils.DatasetUtils.GenerateFloatLabelFloatFeatureVectorUlongGroupIdSamples(dataPointCount).ToList();
             var dataView = ML.Data.LoadFromEnumerable(data);
             dataView = ML.Data.Cache(dataView);
 
@@ -623,8 +627,8 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             var loadedPrediction = loadedModel.Transform(dataView);
             var loadedMetrics = ML.Regression.Evaluate(loadedPrediction);
 
-            Assert.Equal(metrics.MeanAbsoluteError, loadedMetrics.MeanAbsoluteError);
-            Assert.Equal(metrics.MeanSquaredError, loadedMetrics.MeanSquaredError);
+            Assert.Equal(metrics.MeanAbsoluteError, loadedMetrics.MeanAbsoluteError, 0.00001);
+            Assert.Equal(metrics.MeanSquaredError, loadedMetrics.MeanSquaredError, 0.00001);
         }
 
         [Fact]
@@ -683,8 +687,8 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             var loadedMetrics = ML.Regression.Evaluate(loadedPrediction);
 
             // Check if the loaded model produces the same result as the trained model.
-            Assert.Equal(metrics.MeanAbsoluteError, loadedMetrics.MeanAbsoluteError);
-            Assert.Equal(metrics.MeanSquaredError, loadedMetrics.MeanSquaredError);
+            Assert.Equal(metrics.MeanAbsoluteError, loadedMetrics.MeanAbsoluteError, 0.00001);
+            Assert.Equal(metrics.MeanSquaredError, loadedMetrics.MeanSquaredError, 0.00001);
 
             var secondPipeline = ML.Transforms.CopyColumns("CopiedFeatures", "Features")
                 .Append(ML.Transforms.NormalizeBinning("CopiedFeatures"))

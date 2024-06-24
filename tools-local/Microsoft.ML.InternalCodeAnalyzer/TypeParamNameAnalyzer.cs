@@ -21,7 +21,7 @@ namespace Microsoft.ML.InternalCodeAnalyzer
         private const string Description =
             "Type parameter names should start with 'T' and the remainder PascalCased.";
 
-        private static DiagnosticDescriptor Rule =
+        private static readonly DiagnosticDescriptor Rule =
             new DiagnosticDescriptor(Id, Title, Format, Category,
                 DiagnosticSeverity.Warning, isEnabledByDefault: true, description: Description);
 
@@ -31,6 +31,8 @@ namespace Microsoft.ML.InternalCodeAnalyzer
         public override void Initialize(AnalysisContext context)
         {
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+            context.EnableConcurrentExecution();
+
             context.RegisterSyntaxNodeAction(Analyze, SyntaxKind.TypeParameter);
         }
 

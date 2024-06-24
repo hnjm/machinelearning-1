@@ -1,8 +1,9 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Microsoft.ML.Internal.DataView;
@@ -27,7 +28,7 @@ namespace Microsoft.ML.Data
     /// a value is sufficient to make a completely independent copy of it. So, for example, this means that a buffer of
     /// buffers is not possible. But, things like <see cref="int"/>, <see cref="float"/>, and <see
     /// cref="ReadOnlyMemory{Char}"/>, are totally fine.</typeparam>
-    public readonly struct VBuffer<T>
+    public readonly struct VBuffer<T> : IEnumerable
     {
         /// <summary>
         /// The internal re-usable array of values.
@@ -364,7 +365,7 @@ namespace Microsoft.ML.Data
         ///
         /// For that reason, a single completely isolated lookup, since constructing <see cref="ReadOnlySpan{T}"/> as
         /// <see cref="GetValues"/> does is not a free operation, it may be more efficient to use this method. However
-        /// if one is doing a more involved computation involving many operations, it may be faster to utiltize
+        /// if one is doing a more involved computation involving many operations, it may be faster to utilize
         /// <see cref="GetValues"/> and, if appropriate, <see cref="GetIndices"/> directly.
         /// </remarks>
         /// <param name="index">The index, which must be a non-negative number less than <see cref="Length"/>.</param>
@@ -402,6 +403,14 @@ namespace Microsoft.ML.Data
 
         public override string ToString()
             => IsDense ? $"Dense vector of size {Length}" : $"Sparse vector of size {Length}, {_count} explicit values";
+
+        /// <summary>
+        /// Returns an enumerator that iterates through the values in VBuffer.
+        /// </summary>
+        public IEnumerator GetEnumerator()
+        {
+            return _values.GetEnumerator();
+        }
 
         internal VBufferEditor<T> GetEditor()
         {

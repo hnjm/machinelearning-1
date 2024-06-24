@@ -19,7 +19,7 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestConcatNoInputColumns()
+        public void TestConcatNoInputColumns()
         {
             var thrown = false;
 
@@ -27,7 +27,7 @@ namespace Microsoft.ML.Tests.Transformers
             {
                 var pipe = ML.Transforms.Concatenate("Features");
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Assert.Contains("Input columns not specified", ex.Message);
                 thrown = true;
@@ -38,7 +38,7 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestConcat()
+        public void TestConcat()
         {
             string dataPath = GetDataPath("adult.tiny.with-schema.txt");
 
@@ -56,7 +56,7 @@ namespace Microsoft.ML.Tests.Transformers
             }, new MultiFileSource(dataPath));
             var data = loader.Load(source);
 
-            DataViewType GetType(DataViewSchema schema, string name)
+            static DataViewType GetType(DataViewSchema schema, string name)
             {
                 Assert.True(schema.TryGetColumnIndex(name, out int cIdx), $"Could not find '{name}'");
                 return schema[cIdx].Type;
@@ -113,7 +113,7 @@ namespace Microsoft.ML.Tests.Transformers
             }, new MultiFileSource(dataPath));
             var data = loader.Load(source);
 
-            DataViewType GetType(DataViewSchema schema, string name)
+            static DataViewType GetType(DataViewSchema schema, string name)
             {
                 Assert.True(schema.TryGetColumnIndex(name, out int cIdx), $"Could not find '{name}'");
                 return schema[cIdx].Type;
@@ -130,8 +130,8 @@ namespace Microsoft.ML.Tests.Transformers
             var columns = concater.Columns;
             var colEnumerator = columns.GetEnumerator();
             colEnumerator.MoveNext();
-            Assert.True(colEnumerator.Current.outputColumnName == "f2" && 
-                colEnumerator.Current.inputColumnNames[0] == "float1" && 
+            Assert.True(colEnumerator.Current.outputColumnName == "f2" &&
+                colEnumerator.Current.inputColumnNames[0] == "float1" &&
                 colEnumerator.Current.inputColumnNames[1] == "float1");
             colEnumerator.MoveNext();
             Assert.True(colEnumerator.Current.outputColumnName == "f3" &&
@@ -144,7 +144,7 @@ namespace Microsoft.ML.Tests.Transformers
             t = GetType(data.Schema, "f3");
             Assert.True(t is VectorDataViewType vt3 && vt3.ItemType == NumberDataViewType.Single && vt3.Size == 5);
 
-            data = ML.Transforms.SelectColumns("f2", "f3" ).Fit(data).Transform(data);
+            data = ML.Transforms.SelectColumns("f2", "f3").Fit(data).Transform(data);
 
             var subdir = Path.Combine("Transform", "Concat");
             var outputPath = GetOutputPath(subdir, "Concat2.tsv");

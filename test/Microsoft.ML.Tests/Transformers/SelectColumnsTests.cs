@@ -42,7 +42,7 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectKeep()
+        public void TestSelectKeep()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -61,7 +61,7 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectKeepWithOrder()
+        public void TestSelectKeepWithOrder()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -82,7 +82,7 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectDrop()
+        public void TestSelectDrop()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -98,26 +98,26 @@ namespace Microsoft.ML.Tests.Transformers
             Assert.Equal(0, bIdx);
             Assert.False(foundColumnC);
         }
-        
+
         [Fact]
-        void TestSelectWorkout()
+        public void TestSelectWorkout()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
-            var invalidData = new [] { new TestClass2 { D = 3, E = 5} };
+            var invalidData = new[] { new TestClass2 { D = 3, E = 5 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
             var invalidDataView = ML.Data.LoadFromEnumerable(invalidData);
 
             // Workout on keep columns
-            var est = ML.Transforms.SelectColumns(new[] {"A", "B"});
+            var est = ML.Transforms.SelectColumns(new[] { "A", "B" });
             TestEstimatorCore(est, validFitInput: dataView, invalidInput: invalidDataView);
 
             // Workout on select columns with hidden: true
-            est = ML.Transforms.SelectColumns(new[] {"A", "B"}, true);
+            est = ML.Transforms.SelectColumns(new[] { "A", "B" }, true);
             TestEstimatorCore(est, validFitInput: dataView, invalidInput: invalidDataView);
         }
 
         [Fact]
-        void TestSelectColumnsWithMissing()
+        public void TestSelectColumnsWithMissing()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -126,11 +126,11 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectColumnsWithSameName()
+        public void TestSelectColumnsWithSameName()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
-            var est = new ColumnCopyingEstimator(Env, new[] {("A", "A"), ("B", "B")});
+            var est = new ColumnCopyingEstimator(Env, new[] { ("A", "A"), ("B", "B") });
             var chain = est.Append(ColumnSelectingEstimator.KeepColumns(Env, "C", "A"));
             var transformer = chain.Fit(dataView);
             var result = transformer.Transform(dataView);
@@ -149,12 +149,12 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectColumnsWithKeepHidden()
+        public void TestSelectColumnsWithKeepHidden()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
-            var est = new ColumnCopyingEstimator(Env, new[] {("A", "A"), ("B", "B")});
-            var chain = est.Append(ML.Transforms.SelectColumns(new[] {"B", "A" }, true));
+            var est = new ColumnCopyingEstimator(Env, new[] { ("A", "A"), ("B", "B") });
+            var chain = est.Append(ML.Transforms.SelectColumns(new[] { "B", "A" }, true));
             var transformer = chain.Fit(dataView);
             var result = transformer.Transform(dataView);
 
@@ -172,7 +172,7 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectSavingAndLoading()
+        public void TestSelectSavingAndLoading()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -191,11 +191,11 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectSavingAndLoadingWithNoKeepHidden()
+        public void TestSelectSavingAndLoadingWithNoKeepHidden()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
-            var est = new ColumnCopyingEstimator(Env, new[] {("A", "A"), ("B", "B")}).Append(
+            var est = new ColumnCopyingEstimator(Env, new[] { ("A", "A"), ("B", "B") }).Append(
                       ML.Transforms.SelectColumns(new[] { "A", "B" }, false));
             var transformer = est.Fit(dataView);
             using (var ms = new MemoryStream())
@@ -211,11 +211,11 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectBackCompatDropColumns()
+        public void TestSelectBackCompatDropColumns()
         {
             // Model generated with: xf=drop{col=A} 
             // Expected output: Features Label B C
-            var data = new[] { new TestClass3() { Label="foo", Features="bar", A = 1, B = 2, C = 3, } };
+            var data = new[] { new TestClass3() { Label = "foo", Features = "bar", A = 1, B = 2, C = 3, } };
             var dataView = ML.Data.LoadFromEnumerable(data);
             string dropModelPath = GetDataPath("backcompat/drop-model.zip");
             using (FileStream fs = File.OpenRead(dropModelPath))
@@ -239,11 +239,11 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectBackCompatKeepColumns()
+        public void TestSelectBackCompatKeepColumns()
         {
             // Model generated with: xf=keep{col=Label col=Features col=A col=B}
             // Expected output: Label Features A B
-            var data = new[] { new TestClass3() { Label="foo", Features="bar", A = 1, B = 2, C = 3, } };
+            var data = new[] { new TestClass3() { Label = "foo", Features = "bar", A = 1, B = 2, C = 3, } };
             var dataView = ML.Data.LoadFromEnumerable(data);
             string dropModelPath = GetDataPath("backcompat/keep-model.zip");
             using (FileStream fs = File.OpenRead(dropModelPath))
@@ -265,13 +265,13 @@ namespace Microsoft.ML.Tests.Transformers
                 Assert.False(foundColumnC);
             }
         }
-        
+
         [Fact]
-        void TestSelectBackCompatChooseColumns()
+        public void TestSelectBackCompatChooseColumns()
         {
             // Model generated with: xf=choose{col=Label col=Features col=A col=B}
             // Output expected is Label Features A B
-            var data = new[] { new TestClass3() { Label="foo", Features="bar", A = 1, B = 2, C = 3, } };
+            var data = new[] { new TestClass3() { Label = "foo", Features = "bar", A = 1, B = 2, C = 3, } };
             var dataView = ML.Data.LoadFromEnumerable(data);
             string dropModelPath = GetDataPath("backcompat/choose-model.zip");
             using (FileStream fs = File.OpenRead(dropModelPath))
@@ -295,11 +295,11 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestSelectBackCompatChooseColumnsWithKeep()
+        public void TestSelectBackCompatChooseColumnsWithKeep()
         {
             // Model generated with: xf=copy{col=A:A col=B:B} xf=choose{col=Label col=Features col=A col=B hidden=keep}
             // Output expected is Label Features A A B B
-            var data = new[] { new TestClass3() { Label="foo", Features="bar", A = 1, B = 2, C = 3, } };
+            var data = new[] { new TestClass3() { Label = "foo", Features = "bar", A = 1, B = 2, C = 3, } };
             var dataView = ML.Data.LoadFromEnumerable(data);
             string chooseModelPath = GetDataPath("backcompat/choose-keep-model.zip");
             using (FileStream fs = File.OpenRead(chooseModelPath))
@@ -324,27 +324,27 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestCommandLineWithKeep()
+        public void TestCommandLineWithKeep()
         {
-            Assert.Equal(Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=select{keepcol=A keepcol=B} in=f:\1.txt" }), (int)0);
+            Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=select{keepcol=A keepcol=B} in=f:\1.txt" }));
         }
 
         [Fact]
-        void TestCommandLineWithDrop()
+        public void TestCommandLineWithDrop()
         {
-            Assert.Equal(Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=select{dropcol=A dropcol=B} in=f:\1.txt" }), (int)0);
+            Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=select{dropcol=A dropcol=B} in=f:\1.txt" }));
         }
 
         [Fact]
-        void TestCommandLineKeepWithoutHidden()
+        public void TestCommandLineKeepWithoutHidden()
         {
-            Assert.Equal(Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=select{keepcol=A keepcol=B hidden=-} in=f:\1.txt" }), (int)0);
+            Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=select{keepcol=A keepcol=B hidden=-} in=f:\1.txt" }));
         }
 
         [Fact]
-        void TestCommandLineKeepWithIgnoreMismatch()
+        public void TestCommandLineKeepWithIgnoreMismatch()
         {
-            Assert.Equal(Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=select{keepcol=A keepcol=B ignore=-} in=f:\1.txt" }), (int)0);
+            Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=select{keepcol=A keepcol=B ignore=-} in=f:\1.txt" }));
         }
     }
 }

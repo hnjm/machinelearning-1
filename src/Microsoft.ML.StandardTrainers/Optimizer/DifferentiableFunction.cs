@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -160,7 +160,7 @@ namespace Microsoft.ML.Numeric
         // the optimal value of eps for the central difference approximation, Nocedal & Wright
         private const float Eps = (float)4.79e-6;
 
-        private static Random _r = new Random(5);
+        private static readonly Random _r = new Random(5);
 
         /// <summary>
         /// Tests the gradient reported by f.

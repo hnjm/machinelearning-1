@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -130,7 +130,7 @@ namespace Microsoft.ML.Transforms
         {
         }
 
-        public LabelIndicatorTransform(IHostEnvironment env, Options options, IDataView input)
+        internal LabelIndicatorTransform(IHostEnvironment env, Options options, IDataView input)
             : base(env, LoadName, Contracts.CheckRef(options, nameof(options)).Columns,
                 input, TestIsMulticlassLabel)
         {

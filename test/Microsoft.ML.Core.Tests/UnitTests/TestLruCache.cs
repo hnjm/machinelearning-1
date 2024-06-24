@@ -1,15 +1,21 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System.Linq;
 using Microsoft.ML.Internal.Utilities;
+using Microsoft.ML.TestFramework;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.ML.RunTests
 {
-    public class TestLruCache
+    public class TestLruCache : BaseTestClass
     {
+        public TestLruCache(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         public void EntryLruCache()
         {
@@ -60,7 +66,7 @@ namespace Microsoft.ML.RunTests
             Assert.Equal("bar", keys[1]);
 
             success = cache.TryGetValue("foo", out val);
-           Assert.False(success);
+            Assert.False(success);
             keys = cache.Keys.ToArray();
             Assert.Equal(2, keys.Length);
             Assert.Equal("baz", keys[0]);

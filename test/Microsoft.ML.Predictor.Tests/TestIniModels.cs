@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -7,6 +7,7 @@ using System.IO;
 using Microsoft.ML.Data;
 using Microsoft.ML.Internal.Utilities;
 using Microsoft.ML.Model;
+using Microsoft.ML.TestFrameworkCommon;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -284,7 +285,7 @@ namespace Microsoft.ML.RunTests
         }
 
         /// <summary>
-        /// Run INI test for a collection of combinationss of predictors and datasets.
+        /// Run INI test for a collection of combinations of predictors and datasets.
         /// </summary>
         /// <param name="predictors"></param>
         /// <param name="datasets"></param>
@@ -524,7 +525,7 @@ namespace Microsoft.ML.RunTests
                             new TextLoader.Column("Label", DataKind.Single, 0),
                             new TextLoader.Column("Features", DataKind.Single, 1, 9)
                         }
-                    }).Load(GetDataPath("breast-cancer.txt"));
+                    }).Load(GetDataPath(TestDatasets.breastCancer.trainFilename));
 
             var pipeline = mlContext.Transforms.ReplaceMissingValues("Features")
                 .Append(mlContext.Regression.Trainers.Gam());
@@ -563,7 +564,7 @@ namespace Microsoft.ML.RunTests
                             new TextLoader.Column("Label", DataKind.Boolean, 0),
                             new TextLoader.Column("Features", DataKind.Single, 1, 9)
                         }
-                    }).Load(GetDataPath("breast-cancer.txt"));
+                    }).Load(GetDataPath(TestDatasets.breastCancer.trainFilename));
 
             var pipeline = mlContext.Transforms.ReplaceMissingValues("Features")
                 .Append(mlContext.BinaryClassification.Trainers.Gam());

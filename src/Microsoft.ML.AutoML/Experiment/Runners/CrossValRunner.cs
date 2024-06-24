@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -19,6 +18,7 @@ namespace Microsoft.ML.AutoML
         private readonly IMetricsAgent<TMetrics> _metricsAgent;
         private readonly IEstimator<ITransformer> _preFeaturizer;
         private readonly ITransformer[] _preprocessorTransforms;
+        private readonly string _groupIdColumn;
         private readonly string _labelColumn;
         private readonly IChannel _logger;
         private readonly DataViewSchema _modelInputSchema;
@@ -29,6 +29,7 @@ namespace Microsoft.ML.AutoML
             IMetricsAgent<TMetrics> metricsAgent,
             IEstimator<ITransformer> preFeaturizer,
             ITransformer[] preprocessorTransforms,
+            string groupIdColumn,
             string labelColumn,
             IChannel logger)
         {
@@ -38,6 +39,7 @@ namespace Microsoft.ML.AutoML
             _metricsAgent = metricsAgent;
             _preFeaturizer = preFeaturizer;
             _preprocessorTransforms = preprocessorTransforms;
+            _groupIdColumn = groupIdColumn;
             _labelColumn = labelColumn;
             _logger = logger;
             _modelInputSchema = trainDatasets[0].Schema;
@@ -52,7 +54,7 @@ namespace Microsoft.ML.AutoML
             {
                 var modelFileInfo = RunnerUtil.GetModelFileInfo(modelDirectory, iterationNum, i + 1);
                 var trainResult = RunnerUtil.TrainAndScorePipeline(_context, pipeline, _trainDatasets[i], _validDatasets[i],
-                    _labelColumn, _metricsAgent, _preprocessorTransforms?[i], modelFileInfo, _modelInputSchema, _logger);
+                    _groupIdColumn, _labelColumn, _metricsAgent, _preprocessorTransforms?[i], modelFileInfo, _modelInputSchema, _logger);
                 trainResults.Add(new SuggestedPipelineTrainResult<TMetrics>(trainResult.model, trainResult.metrics, trainResult.exception, trainResult.score));
             }
 
@@ -66,11 +68,11 @@ namespace Microsoft.ML.AutoML
 
         private static double CalcAverageScore(IEnumerable<double> scores)
         {
-            if (scores.Any(s => double.IsNaN(s)))
-            {
+            var newScores = scores.Where(r => !double.IsNaN(r));
+            // Return NaN iff all scores are NaN
+            if (newScores.Count() == 0)
                 return double.NaN;
-            }
-            return scores.Average();
+            return newScores.Average();
         }
     }
 }

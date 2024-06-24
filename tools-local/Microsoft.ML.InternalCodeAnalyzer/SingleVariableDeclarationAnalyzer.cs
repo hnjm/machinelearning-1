@@ -22,7 +22,7 @@ namespace Microsoft.ML.InternalCodeAnalyzer
         private const string Description =
             "We prefer to have one variable per declaration.";
 
-        private static DiagnosticDescriptor Rule =
+        private static readonly DiagnosticDescriptor Rule =
             new DiagnosticDescriptor(DiagnosticId, Title, Format, Category,
                 DiagnosticSeverity.Warning, isEnabledByDefault: true, description: Description);
 
@@ -32,6 +32,8 @@ namespace Microsoft.ML.InternalCodeAnalyzer
         public override void Initialize(AnalysisContext context)
         {
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+            context.EnableConcurrentExecution();
+
             context.RegisterSyntaxNodeAction(Analyze, SyntaxKind.VariableDeclaration);
         }
 

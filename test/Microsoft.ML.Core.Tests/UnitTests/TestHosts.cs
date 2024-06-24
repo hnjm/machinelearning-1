@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -9,12 +9,18 @@ using System.Linq;
 using System.Threading;
 using Microsoft.ML.Data;
 using Microsoft.ML.Runtime;
+using Microsoft.ML.TestFramework;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.ML.RunTests
 {
-    public class TestHosts
+    public class TestHosts : BaseTestClass
     {
+        public TestHosts(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         public void TestCancellation()
         {
@@ -55,10 +61,18 @@ namespace Microsoft.ML.RunTests
                     do
                     {
                         index = rand.Next(hosts.Count);
-                    } while ((hosts.ElementAt(index).Item1 as ICancelable).IsCanceled || hosts.ElementAt(index).Item2 < 3);
+                    } while ((hosts.ElementAt(index).Item1 as ICancelable).IsCanceled ||
+                              // use 2 instead of 3 here as there is no guarantee there is always level 2 children
+                              hosts.ElementAt(index).Item2 < 2);
                     (hosts.ElementAt(index).Item1 as ICancelable).CancelExecution();
                     rootHost = hosts.ElementAt(index).Item1;
                     queue.Enqueue(rootHost);
+
+                    // all children has been canceled, we should stop looking
+                    if (hosts.Count(q => (q.Item1 as ICancelable).IsCanceled) == hosts.Count - 5)
+                    {
+                        break;
+                    }
                 }
                 addThread.Join();
                 while (queue.Count > 0)
@@ -87,14 +101,14 @@ namespace Microsoft.ML.RunTests
 
             for (int i = 0; i < 5; i++)
             {
-                var tupple = hosts.ElementAt(i);
-                var newHost = tupple.Item1.Register((tupple.Item2 + 1).ToString());
-                hosts.Add(new Tuple<IHost, int>(newHost, tupple.Item2 + 1));
+                var tuple = hosts.ElementAt(i);
+                var newHost = tuple.Item1.Register((tuple.Item2 + 1).ToString());
+                hosts.Add(new Tuple<IHost, int>(newHost, tuple.Item2 + 1));
             }
 
             ((MLContext)env).CancelExecution();
 
-            //Ensure all created hosts are cancelled.
+            //Ensure all created hosts are canceled.
             //5 parent and one child for each.
             Assert.Equal(10, hosts.Count);
 
@@ -110,7 +124,7 @@ namespace Microsoft.ML.RunTests
         {
             var messages = new List<string>();
 
-            var env = new MLContext();
+            var env = new MLContext(1);
             env.Log += (sender, e) => messages.Add(e.Message);
 
             // create a dummy text reader to trigger log messages

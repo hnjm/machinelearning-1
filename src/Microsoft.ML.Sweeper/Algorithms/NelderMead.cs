@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -23,33 +23,33 @@ namespace Microsoft.ML.Sweeper
             [Argument(ArgumentType.Multiple | ArgumentType.Required, HelpText = "Swept parameters", ShortName = "p", SignatureType = typeof(SignatureSweeperParameter))]
             public IComponentFactory<IValueGenerator>[] SweptParameters;
 
-            [Argument(ArgumentType.LastOccurenceWins, HelpText = "The sweeper used to get the initial results.", ShortName = "init", SignatureType = typeof(SignatureSweeperFromParameterList))]
+            [Argument(ArgumentType.LastOccurrenceWins, HelpText = "The sweeper used to get the initial results.", ShortName = "init", SignatureType = typeof(SignatureSweeperFromParameterList))]
             public IComponentFactory<IValueGenerator[], ISweeper> FirstBatchSweeper = ComponentFactoryUtils.CreateFromFunction<IValueGenerator[], ISweeper>((host, array) => new UniformRandomSweeper(host, new SweeperBase.OptionsBase(), array));
 
             [Argument(ArgumentType.AtMostOnce, HelpText = "Seed for the random number generator for the first batch sweeper", ShortName = "seed")]
             public int RandomSeed;
 
-            [Argument(ArgumentType.LastOccurenceWins, HelpText = "Simplex diameter for stopping", ShortName = "dstop")]
+            [Argument(ArgumentType.LastOccurrenceWins, HelpText = "Simplex diameter for stopping", ShortName = "dstop")]
             public float StoppingSimplexDiameter = (float)0.001;
 
-            [Argument(ArgumentType.LastOccurenceWins,
+            [Argument(ArgumentType.LastOccurrenceWins,
                 HelpText = "If iteration point is outside parameter definitions, should it be projected?", ShortName = "project")]
             public bool ProjectInbounds = true;
 
             #region Core algorithm constants
-            [Argument(ArgumentType.LastOccurenceWins, HelpText = "Reflection parameter", ShortName = "dr")]
+            [Argument(ArgumentType.LastOccurrenceWins, HelpText = "Reflection parameter", ShortName = "dr")]
             public float DeltaReflection = (float)1.0;
 
-            [Argument(ArgumentType.LastOccurenceWins, HelpText = "Expansion parameter", ShortName = "de")]
+            [Argument(ArgumentType.LastOccurrenceWins, HelpText = "Expansion parameter", ShortName = "de")]
             public float DeltaExpansion = (float)1.5;
 
-            [Argument(ArgumentType.LastOccurenceWins, HelpText = "Inside contraction parameter", ShortName = "dic")]
+            [Argument(ArgumentType.LastOccurrenceWins, HelpText = "Inside contraction parameter", ShortName = "dic")]
             public float DeltaInsideContraction = -(float)0.5;
 
-            [Argument(ArgumentType.LastOccurenceWins, HelpText = "Outside contraction parameter", ShortName = "doc")]
+            [Argument(ArgumentType.LastOccurrenceWins, HelpText = "Outside contraction parameter", ShortName = "doc")]
             public float DeltaOutsideContraction = (float)0.5;
 
-            [Argument(ArgumentType.LastOccurenceWins, HelpText = "Shrinkage parameter", ShortName = "ds")]
+            [Argument(ArgumentType.LastOccurrenceWins, HelpText = "Shrinkage parameter", ShortName = "ds")]
             public float GammaShrink = (float)0.5;
             #endregion
         }
@@ -73,7 +73,7 @@ namespace Microsoft.ML.Sweeper
 
         private OptimizationStage _stage;
         private readonly List<KeyValuePair<ParameterSet, float[]>> _pendingSweeps;
-        private Queue<KeyValuePair<ParameterSet, float[]>> _pendingSweepsNotSubmitted;
+        private readonly Queue<KeyValuePair<ParameterSet, float[]>> _pendingSweepsNotSubmitted;
         private KeyValuePair<IRunResult, float[]> _lastReflectionResult;
 
         private KeyValuePair<IRunResult, float[]> _worst;

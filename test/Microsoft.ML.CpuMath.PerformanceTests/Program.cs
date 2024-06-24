@@ -4,20 +4,19 @@
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
-using BenchmarkDotNet.Toolchains.InProcess;
+using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
 namespace Microsoft.ML.CpuMath.PerformanceTests
 {
     class Program
     {
-        public static void Main(string[] args) 
+        public static void Main(string[] args)
             => BenchmarkSwitcher
                 .FromAssembly(typeof(Program).Assembly)
                 .Run(args, CreateCustomConfig());
 
         private static IConfig CreateCustomConfig()
-            => DefaultConfig.Instance
-                .With(Job.Default
-                    .With(InProcessToolchain.Instance));
+            => DefaultConfig.Instance.AddJob(Job.Default
+                    .WithToolchain(InProcessEmitToolchain.Instance));
     }
 }

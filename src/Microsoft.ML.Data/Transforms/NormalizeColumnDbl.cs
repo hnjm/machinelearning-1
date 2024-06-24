@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -111,7 +111,7 @@ namespace Microsoft.ML.Transforms
             numFeatures = size;
 
             int morphCount = ctx.Reader.ReadInt32();
-            Contracts.CheckDecode(-1 <= morphCount & morphCount < size);
+            Contracts.CheckDecode(-1 <= morphCount && morphCount < size);
 
             if (indicesShift != null)
                 indicesShift.Clear();
@@ -164,7 +164,7 @@ namespace Microsoft.ML.Transforms
                 for (int iiv = 0; iiv < indicesMorph.Length; iiv++)
                 {
                     int iv = indicesMorph[iiv];
-                    Contracts.CheckDecode(ivPrev < iv & iv < numFeatures);
+                    Contracts.CheckDecode(ivPrev < iv && iv < numFeatures);
                     ivPrev = iv;
                     TFloat scale = scales[iv] = scalesSparse[iiv];
                     Contracts.CheckDecode(!TFloat.IsNaN(scale));
@@ -356,7 +356,7 @@ namespace Microsoft.ML.Transforms
             Contracts.Check(value.Length == size);
             _trainCount++;
             var values = value.GetValues();
-            Contracts.Assert(0 <= values.Length & values.Length <= size);
+            Contracts.Assert(0 <= values.Length && values.Length <= size);
             if (values.Length == 0)
                 return;
 
@@ -437,14 +437,24 @@ namespace Microsoft.ML.Transforms
             get { return _mean; }
         }
 
-        public Double[] StdDev
+        public Double[] StdDevPopulation
         {
             get { return _m2.Select((m2, i) => Math.Sqrt(m2 / _cnz[i])).ToArray(); }
+        }
+
+        public Double[] StdDevSample
+        {
+            get { return _m2.Select((m2, i) => Math.Sqrt(m2 / Math.Max(0, _cnz[i] - 1))).ToArray(); }
         }
 
         public Double[] MeanSquareError
         {
             get { return _m2.Select((m2, i) => m2 / _cnz[i]).ToArray(); }
+        }
+
+        public Double[] SampleVariance
+        {
+            get { return _m2.Select((m2, i) => m2 / Math.Max(0, _cnz[i] - 1)).ToArray(); }
         }
 
         public Double[] M2
@@ -457,7 +467,7 @@ namespace Microsoft.ML.Transforms
             _trainCount++;
             var size = _mean.Length;
             var values = value.GetValues();
-            Contracts.Assert(0 <= values.Length & values.Length <= size);
+            Contracts.Assert(0 <= values.Length && values.Length <= size);
             if (values.Length == 0)
                 return;
 
@@ -513,6 +523,118 @@ namespace Microsoft.ML.Transforms
             Contracts.Assert(dm2 >= 0);
             _m2[j] += dm2;
             Contracts.Assert(_m2[j] >= 0);
+        }
+    }
+
+    [BestFriend]
+    internal static partial class MedianAggregatorUtils
+    {
+        /// <summary>
+        /// Based on the algorithm on GeeksForGeeks https://www.geeksforgeeks.org/median-of-stream-of-integers-running-integers/.
+        /// </summary>
+        /// <param name="num">The new number to account for in our median calculation.</param>
+        /// <param name="median">The current median.</param>
+        /// <param name="belowMedianHeap">The MaxHeap that has all the numbers below the median.</param>
+        /// <param name="aboveMedianHeap">The MinHeap that has all the numbers above the median.</param>
+        [BestFriend]
+        internal static void GetMedianSoFar(in double num, ref double median, ref MaxHeap<double> belowMedianHeap, ref MinHeap<double> aboveMedianHeap)
+        {
+            int comparison = belowMedianHeap.Count().CompareTo(aboveMedianHeap.Count());
+
+            if (comparison < 0)
+            { // More elements in aboveMedianHeap than belowMedianHeap.
+                if (num < median)
+                { // Current element belongs in the belowMedianHeap.
+                    // Insert new number into belowMedianHeap
+                    belowMedianHeap.Add(num);
+
+                }
+                else
+                { // Current element belongs in aboveMedianHeap.
+                    // Need to move one to belowMedianHeap to keep heeps balanced.
+                    belowMedianHeap.Add(aboveMedianHeap.Pop());
+
+                    aboveMedianHeap.Add(num);
+                }
+
+                // Both heaps are balanced so median is the average of the 2 heaps.
+                median = (aboveMedianHeap.Peek() + belowMedianHeap.Peek()) / 2;
+
+            }
+            else if (comparison == 0)
+            { // Both heaps have the same number of elements. Simple put the number where it belongs.
+                if (num < median)
+                { // Current element belongs in the belowMedianHeap.
+                    belowMedianHeap.Add(num);
+
+                    // Now we have an odd number of items, median is the new root of the belowMedianHeap
+                    median = belowMedianHeap.Peek();
+
+                }
+                else
+                { // Current element belongs in above median heap.
+                    aboveMedianHeap.Add(num);
+
+                    // Now we have an odd number of items, median is the new root of the aboveMedianHeap
+                    median = aboveMedianHeap.Peek();
+                }
+
+            }
+            else
+            { // More elements in belowMedianHeap than aboveMedianHeap.
+                if (num < median)
+                { // Current element belongs in the belowMedianHeap.
+                    // Need to move one to aboveMedianHeap to keep heeps balanced.
+                    aboveMedianHeap.Add(belowMedianHeap.Pop());
+
+                    // Insert new number into belowMedianHeap
+                    belowMedianHeap.Add(num);
+
+                }
+                else
+                { // Current element belongs in aboveMedianHeap.
+                    aboveMedianHeap.Add(num);
+                }
+
+                // Both heaps are balanced so median is the average of the 2 heaps.
+                median = (aboveMedianHeap.Peek() + belowMedianHeap.Peek()) / 2;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Base class for tracking median values for a single valued column.
+    /// It tracks median values of non-sparse values (vCount).
+    /// NaNs are ignored when updating min and max.
+    /// </summary>
+    [BestFriend]
+    internal sealed class MedianDblAggregator : IColumnAggregator<double>
+    {
+        private MedianAggregatorUtils.MaxHeap<double> _belowMedianHeap;
+        private MedianAggregatorUtils.MinHeap<double> _aboveMedianHeap;
+        private double _median;
+
+        public MedianDblAggregator(int contatinerStartingSize = 1000)
+        {
+            Contracts.Check(contatinerStartingSize > 0);
+            _belowMedianHeap = new MedianAggregatorUtils.MaxHeap<double>(contatinerStartingSize);
+            _aboveMedianHeap = new MedianAggregatorUtils.MinHeap<double>(contatinerStartingSize);
+            _median = default;
+        }
+
+        public double Median
+        {
+            get { return _median; }
+        }
+
+        public void ProcessValue(in double value)
+        {
+            MedianAggregatorUtils.GetMedianSoFar(value, ref _median, ref _belowMedianHeap, ref _aboveMedianHeap);
+        }
+
+        public void Finish()
+        {
+            // Finish is a no-op because we are updating the median continually as we go
         }
     }
 
@@ -703,7 +825,7 @@ namespace Microsoft.ML.Transforms
                         Contracts.Assert(input.Length == scale.Length);
                         int size = scale.Length;
                         var values = input.GetValues();
-                        Contracts.Assert(0 <= values.Length & values.Length <= size);
+                        Contracts.Assert(0 <= values.Length && values.Length <= size);
 
                         // We always start with sparse, since we may make things sparser than the source.
                         bldr.Reset(size, dense: false);
@@ -722,7 +844,7 @@ namespace Microsoft.ML.Transforms
                         for (int ii = 0; ii < values.Length; ii++)
                         {
                             int i = indices[ii];
-                            Contracts.Assert(0 <= i & i < size);
+                            Contracts.Assert(0 <= i && i < size);
                             bldr.AddFeature(i, values[ii] * scale[i]);
                         }
                     }
@@ -733,7 +855,7 @@ namespace Microsoft.ML.Transforms
                         Contracts.Assert(input.Length == scale.Length);
                         int size = scale.Length;
                         var values = input.GetValues();
-                        Contracts.Assert(0 <= values.Length & values.Length <= size);
+                        Contracts.Assert(0 <= values.Length && values.Length <= size);
 
                         // We always start with sparse, since we may make things sparser than the source.
                         bldr.Reset(size, dense: false);
@@ -759,7 +881,7 @@ namespace Microsoft.ML.Transforms
                         Contracts.Assert(ivSrc < size);
                         for (int ivDst = 0; ivDst < size; ivDst++)
                         {
-                            Contracts.Assert(ivDst <= ivSrc & ivSrc <= size);
+                            Contracts.Assert(ivDst <= ivSrc && ivSrc <= size);
                             if (ivDst == ivSrc)
                             {
                                 bldr.AddFeature(ivDst, (values[ii] - offset[ivDst]) * scale[ivDst]);
@@ -778,7 +900,7 @@ namespace Microsoft.ML.Transforms
 
                         int size = scale.Length;
                         var values = input.GetValues();
-                        Contracts.Assert(0 <= values.Length & values.Length <= size);
+                        Contracts.Assert(0 <= values.Length && values.Length <= size);
 
                         // We always start with sparse, since we may make things sparser than the source.
                         bldr.Reset(size, dense: false);
@@ -805,8 +927,8 @@ namespace Microsoft.ML.Transforms
                         int ivDst = nz[inz];
                         for (; ; )
                         {
-                            Contracts.Assert(0 <= ivDst & ivDst <= size);
-                            Contracts.Assert(0 <= ivSrc & ivSrc <= size);
+                            Contracts.Assert(0 <= ivDst && ivDst <= size);
+                            Contracts.Assert(0 <= ivSrc && ivSrc <= size);
                             Contracts.Assert(ii < values.Length && ivSrc == indices[ii] || ii == values.Length && ivSrc == size);
                             Contracts.Assert(inz < nz.Length && ivDst == nz[inz] || inz == nz.Length && ivDst == size);
 
@@ -977,7 +1099,7 @@ namespace Microsoft.ML.Transforms
                         Contracts.Assert(input.Length == mean.Length);
                         int size = mean.Length;
                         var values = input.GetValues();
-                        Contracts.Assert(0 <= values.Length & values.Length <= size);
+                        Contracts.Assert(0 <= values.Length && values.Length <= size);
 
                         // We always start with sparse, since we may make things sparser than the source.
                         bldr.Reset(size, dense: false);
@@ -1045,7 +1167,7 @@ namespace Microsoft.ML.Transforms
                         _den = Math.Max(1, _binUpperBounds.Length - 1);
                         if (fixZero)
                             _offset = _binUpperBounds.FindIndexSorted(0) / _den;
-                        Host.Assert(0 <= _offset & _offset <= 1);
+                        Host.Assert(0 <= _offset && _offset <= 1);
                     }
 
                     public static new ImplOne Create(ModelLoadContext ctx, IHost host, DataViewType typeSrc)
@@ -1102,7 +1224,7 @@ namespace Microsoft.ML.Transforms
                     }
 
                     public override NormalizingTransformer.NormalizerModelParametersBase GetNormalizerModelParams()
-                         => new NormalizingTransformer.BinNormalizerModelParameters<TFloat>(ImmutableArray.Create(_binUpperBounds), _den,_offset);
+                         => new NormalizingTransformer.BinNormalizerModelParameters<TFloat>(ImmutableArray.Create(_binUpperBounds), _den, _offset);
                 }
 
                 public sealed class ImplVec : BinColumnFunction
@@ -1125,7 +1247,7 @@ namespace Microsoft.ML.Transforms
                             for (int i = 0; i < _binUpperBounds.Length; i++)
                             {
                                 _offset[i] = _binUpperBounds[i].FindIndexSorted(0) / _den[i];
-                                Host.Assert(0 <= _offset[i] & _offset[i] <= 1);
+                                Host.Assert(0 <= _offset[i] && _offset[i] <= 1);
                                 any |= _offset[i] != 0;
                             }
                             if (!any)
@@ -1188,7 +1310,7 @@ namespace Microsoft.ML.Transforms
                         Contracts.Assert(input.Length == _binUpperBounds.Length);
                         int size = _binUpperBounds.Length;
                         var values = input.GetValues();
-                        Contracts.Assert(0 <= values.Length & values.Length <= size);
+                        Contracts.Assert(0 <= values.Length && values.Length <= size);
 
                         // We always start with sparse, since we may make things sparser than the source.
                         bldr.Reset(size, dense: false);
@@ -1224,7 +1346,7 @@ namespace Microsoft.ML.Transforms
                             TFloat zero = 0;
                             for (int ivDst = 0; ivDst < size; ivDst++)
                             {
-                                Contracts.Assert(ivDst <= ivSrc & ivSrc <= size);
+                                Contracts.Assert(ivDst <= ivSrc && ivSrc <= size);
                                 if (ivDst == ivSrc)
                                 {
                                     bldr.AddFeature(ivDst,
@@ -1243,7 +1365,7 @@ namespace Microsoft.ML.Transforms
                             for (int ii = 0; ii < values.Length; ii++)
                             {
                                 int i = indices[ii];
-                                Contracts.Assert(0 <= i & i < size);
+                                Contracts.Assert(0 <= i && i < size);
                                 bldr.AddFeature(i, BinUtils.GetValue(in values[ii], _binUpperBounds[i], _den[i]));
                             }
                         }
@@ -1291,7 +1413,7 @@ namespace Microsoft.ML.Transforms
                     offset = 0;
                 else
                     offset = min;
-                Contracts.Assert(0 <= scale & scale < TFloat.PositiveInfinity);
+                Contracts.Assert(0 <= scale && scale < TFloat.PositiveInfinity);
             }
 
             private static void ComputeScaleAndOffsetFixZero(TFloat max, TFloat min, out TFloat scale, out TFloat offset)
@@ -1312,7 +1434,7 @@ namespace Microsoft.ML.Transforms
                     scale = 0;
                 else
                     scale = 1 / Math.Max(Math.Abs(max), Math.Abs(min));
-                Contracts.Assert(0 <= scale & scale < TFloat.PositiveInfinity);
+                Contracts.Assert(0 <= scale && scale < TFloat.PositiveInfinity);
             }
         }
 
@@ -1332,7 +1454,7 @@ namespace Microsoft.ML.Transforms
                     offset = 0;
                 else
                     offset = (TFloat)mean;
-                Contracts.Assert(0 <= scale & scale < TFloat.PositiveInfinity);
+                Contracts.Assert(0 <= scale && scale < TFloat.PositiveInfinity);
             }
 
             public static void ComputeScaleAndOffsetFixZero(Double mean, Double meanSquaredError, out TFloat scale, out TFloat offset)
@@ -1348,7 +1470,7 @@ namespace Microsoft.ML.Transforms
                     scale = 0;
                 else
                     scale = 1 / (TFloat)Math.Sqrt(meanSquaredError + mean * mean);
-                Contracts.Assert(0 <= scale & scale < TFloat.PositiveInfinity);
+                Contracts.Assert(0 <= scale && scale < TFloat.PositiveInfinity);
             }
         }
 
@@ -1377,7 +1499,7 @@ namespace Microsoft.ML.Transforms
                 int binIdx = binUpperBounds.FindIndexSorted(0, binUpperBounds.Length - 1, input);
                 Contracts.Check(binIdx < binUpperBounds.Length);
                 var value = binIdx / den - offset;
-                Contracts.Assert(-1 <= value & value <= 1);
+                Contracts.Assert(-1 <= value && value <= 1);
                 return value;
             }
 
@@ -1525,15 +1647,17 @@ namespace Microsoft.ML.Transforms
                 private readonly bool _useLog;
                 private readonly bool _useCdf;
                 private readonly bool _fix;
+                private readonly bool _useSampleVariance;
                 private readonly MeanVarDblAggregator _aggregator;
                 private VBuffer<TFloat> _buffer;
 
-                private MeanVarOneColumnFunctionBuilder(IHost host, long lim, bool fix, ValueGetter<TFloat> getSrc, bool useLog, bool useCdf)
+                private MeanVarOneColumnFunctionBuilder(IHost host, long lim, bool fix, ValueGetter<TFloat> getSrc, bool useLog, bool useCdf, bool useSampleVariance)
                     : base(host, lim, getSrc)
                 {
                     _useLog = useLog;
                     _useCdf = useCdf;
                     _fix = fix;
+                    _useSampleVariance = useSampleVariance;
                     _aggregator = new MeanVarDblAggregator(1, useLog);
                     _buffer = new VBuffer<TFloat>(1, new TFloat[1]);
                 }
@@ -1542,7 +1666,7 @@ namespace Microsoft.ML.Transforms
                     ValueGetter<TFloat> getter)
                 {
                     host.CheckUserArg(column.MaximumExampleCount > 1, nameof(column.MaximumExampleCount), "Must be greater than 1");
-                    return new MeanVarOneColumnFunctionBuilder(host, column.MaximumExampleCount, column.EnsureZeroUntouched, getter, false, column.UseCdf);
+                    return new MeanVarOneColumnFunctionBuilder(host, column.MaximumExampleCount, column.EnsureZeroUntouched, getter, false, column.UseCdf, column.UseSampleVariance);
                 }
 
                 public static IColumnFunctionBuilder Create(NormalizingEstimator.LogMeanVarianceColumnOptions column, IHost host, DataViewType srcType,
@@ -1550,7 +1674,7 @@ namespace Microsoft.ML.Transforms
                 {
                     var lim = column.MaximumExampleCount;
                     host.CheckUserArg(lim > 1, nameof(column.MaximumExampleCount), "Must be greater than 1");
-                    return new MeanVarOneColumnFunctionBuilder(host, lim, false, getter, true, column.UseCdf);
+                    return new MeanVarOneColumnFunctionBuilder(host, lim, false, getter, true, column.UseCdf, column.UseSampleVariance);
                 }
 
                 protected override bool ProcessValue(in TFloat origVal)
@@ -1577,10 +1701,13 @@ namespace Microsoft.ML.Transforms
                         return AffineColumnFunction.Create(Host, (TFloat)0, (TFloat)0);
                     TFloat scale;
                     TFloat offset;
+                    var stdDev = _useSampleVariance ? _aggregator.StdDevSample[0] : _aggregator.StdDevPopulation[0];
+                    var variance = _useSampleVariance ? _aggregator.SampleVariance[0] : _aggregator.MeanSquareError[0];
+
                     if (_fix)
-                        MeanVarUtils.ComputeScaleAndOffsetFixZero(_aggregator.Mean[0], _aggregator.MeanSquareError[0], out scale, out offset);
+                        MeanVarUtils.ComputeScaleAndOffsetFixZero(_aggregator.Mean[0], variance, out scale, out offset);
                     else
-                        MeanVarUtils.ComputeScaleAndOffset(_aggregator.Mean[0], _aggregator.StdDev[0], out scale, out offset);
+                        MeanVarUtils.ComputeScaleAndOffset(_aggregator.Mean[0], stdDev, out scale, out offset);
 
                     return AffineColumnFunction.Create(Host, scale, offset);
                 }
@@ -1591,7 +1718,9 @@ namespace Microsoft.ML.Transforms
                     if (_aggregator.M2[0] == 0 || _aggregator.Counts[0] == 0)
                         return CdfColumnFunction.Create(Host, (TFloat)0, (TFloat)0, _useLog);
 
-                    return CdfColumnFunction.Create(Host, (TFloat)_aggregator.Mean[0], (TFloat)_aggregator.StdDev[0], _useLog);
+                    var stdDev = _useSampleVariance ? _aggregator.StdDevSample[0] : _aggregator.StdDevPopulation[0];
+
+                    return CdfColumnFunction.Create(Host, (TFloat)_aggregator.Mean[0], (TFloat)stdDev, _useLog);
                 }
             }
 
@@ -1600,16 +1729,18 @@ namespace Microsoft.ML.Transforms
                 private readonly bool _fix;
                 private readonly bool _useLog;
                 private readonly bool _useCdf;
+                private readonly bool _useSampleVariance;
                 private readonly MeanVarDblAggregator _aggregator;
 
                 private MeanVarVecColumnFunctionBuilder(IHost host, int cv, long lim, bool fix,
-                    ValueGetter<VBuffer<TFloat>> getSrc, bool useLog, bool useCdf)
+                    ValueGetter<VBuffer<TFloat>> getSrc, bool useLog, bool useCdf, bool useSampleVariance)
                     : base(host, lim, getSrc)
                 {
                     _aggregator = new MeanVarDblAggregator(cv, useLog);
                     _fix = fix;
                     _useLog = useLog;
                     _useCdf = useCdf;
+                    _useSampleVariance = useSampleVariance;
                 }
 
                 public static IColumnFunctionBuilder Create(NormalizingEstimator.MeanVarianceColumnOptions column, IHost host, VectorDataViewType srcType,
@@ -1617,7 +1748,7 @@ namespace Microsoft.ML.Transforms
                 {
                     host.CheckUserArg(column.MaximumExampleCount > 1, nameof(column.MaximumExampleCount), "Must be greater than 1");
                     var cv = srcType.Size;
-                    return new MeanVarVecColumnFunctionBuilder(host, cv, column.MaximumExampleCount, column.EnsureZeroUntouched, getter, false, column.UseCdf);
+                    return new MeanVarVecColumnFunctionBuilder(host, cv, column.MaximumExampleCount, column.EnsureZeroUntouched, getter, false, column.UseCdf, column.UseSampleVariance);
                 }
 
                 public static IColumnFunctionBuilder Create(NormalizingEstimator.LogMeanVarianceColumnOptions column, IHost host, VectorDataViewType srcType,
@@ -1626,7 +1757,7 @@ namespace Microsoft.ML.Transforms
                     var lim = column.MaximumExampleCount;
                     host.CheckUserArg(lim > 1, nameof(column.MaximumExampleCount), "Must be greater than 1");
                     var cv = srcType.Size;
-                    return new MeanVarVecColumnFunctionBuilder(host, cv, lim, false, getter, true, column.UseCdf);
+                    return new MeanVarVecColumnFunctionBuilder(host, cv, lim, false, getter, true, column.UseCdf, column.UseSampleVariance);
                 }
 
                 protected override bool ProcessValue(in VBuffer<TFloat> buffer)
@@ -1664,10 +1795,14 @@ namespace Microsoft.ML.Transforms
                             scale[i] = offset[i] = 0;
                             continue;
                         }
+
+                        var stdDev = _useSampleVariance ? _aggregator.StdDevSample[i] : _aggregator.StdDevPopulation[i];
+                        var variance = _useSampleVariance ? _aggregator.SampleVariance[i] : _aggregator.MeanSquareError[i];
+
                         if (_fix)
-                            MeanVarUtils.ComputeScaleAndOffsetFixZero(_aggregator.Mean[i], _aggregator.MeanSquareError[i], out scale[i], out offset[i]);
+                            MeanVarUtils.ComputeScaleAndOffsetFixZero(_aggregator.Mean[i], variance, out scale[i], out offset[i]);
                         else
-                            MeanVarUtils.ComputeScaleAndOffset(_aggregator.Mean[i], _aggregator.StdDev[i], out scale[i], out offset[i]);
+                            MeanVarUtils.ComputeScaleAndOffset(_aggregator.Mean[i], stdDev, out scale[i], out offset[i]);
                         if (offset[i] != 0 && nz.Count < lim)
                             nz.Add(i);
                     }
@@ -1707,7 +1842,8 @@ namespace Microsoft.ML.Transforms
                             continue;
                         }
                         mean[i] = (TFloat)_aggregator.Mean[i];
-                        stddev[i] = (TFloat)_aggregator.StdDev[i];
+                        stddev[i] = (TFloat)(_useSampleVariance ? _aggregator.StdDevSample[i] : _aggregator.StdDevPopulation[i]);
+
                     }
 
                     return CdfColumnFunction.Create(Host, mean, stddev, _useLog);
@@ -1718,7 +1854,7 @@ namespace Microsoft.ML.Transforms
             {
                 private readonly bool _fix;
                 private readonly int _numBins;
-                private List<TFloat> _values;
+                private readonly List<TFloat> _values;
 
                 private BinOneColumnFunctionBuilder(IHost host, long lim, bool fix, int numBins, ValueGetter<TFloat> getSrc)
                     : base(host, lim, getSrc)
@@ -1762,7 +1898,7 @@ namespace Microsoft.ML.Transforms
             {
                 private readonly bool _fix;
                 private readonly int _numBins;
-                private List<TFloat>[] _values;
+                private readonly List<TFloat>[] _values;
 
                 private BinVecColumnFunctionBuilder(IHost host, int cv, long lim, bool fix, int numBins,
                     ValueGetter<VBuffer<TFloat>> getSrc)
@@ -1798,7 +1934,7 @@ namespace Microsoft.ML.Transforms
                     Host.Check(buffer.Length == size);
 
                     var values = buffer.GetValues();
-                    Host.Assert(0 <= values.Length & values.Length <= size);
+                    Host.Assert(0 <= values.Length && values.Length <= size);
                     if (values.Length == 0)
                         return true;
 
@@ -1910,6 +2046,144 @@ namespace Microsoft.ML.Transforms
                     host.CheckUserArg(numBins > 1, nameof(column.MaximumBinCount), "Must be greater than 1");
                     host.CheckUserArg(column.MininimumBinSize > 0, nameof(column.MininimumBinSize), "Must be positive");
                     return new SupervisedBinVecColumnFunctionBuilder(host, lim, fix, numBins, column.MininimumBinSize, valueColumnId, labelColumnId, dataRow);
+                }
+            }
+
+            public sealed class RobustScalerOneColumnFunctionBuilder : OneColumnFunctionBuilderBase<double>
+            {
+                private readonly MinMaxDblAggregator _minMaxAggregator;
+                private readonly MedianDblAggregator _medianAggregator;
+                private readonly bool _centerData;
+                private readonly uint _quantileMin;
+                private readonly uint _quantileMax;
+                private VBuffer<double> _buffer;
+
+                private RobustScalerOneColumnFunctionBuilder(IHost host, long lim, bool centerData, uint quantileMin, uint quantileMax, ValueGetter<double> getSrc)
+                    : base(host, lim, getSrc)
+                {
+                    // Using the MinMax aggregator since that is what needs to be found here as well.
+                    // The difference is how the min/max are used.
+                    _minMaxAggregator = new MinMaxDblAggregator(1);
+                    _medianAggregator = new MedianDblAggregator();
+                    _buffer = new VBuffer<double>(1, new double[1]);
+                    _centerData = centerData;
+                    _quantileMin = quantileMin;
+                    _quantileMax = quantileMax;
+                }
+
+                protected override bool ProcessValue(in double val)
+                {
+                    if (!base.ProcessValue(in val))
+                        return false;
+                    VBufferEditor.CreateFromBuffer(ref _buffer).Values[0] = val;
+                    _minMaxAggregator.ProcessValue(in _buffer);
+                    _medianAggregator.ProcessValue(in val);
+                    return true;
+                }
+
+                public static IColumnFunctionBuilder Create(NormalizingEstimator.RobustScalingColumnOptions column, IHost host, DataViewType srcType,
+                    bool centerData, uint quantileMin, uint quantileMax, ValueGetter<double> getter)
+                {
+                    host.CheckUserArg(column.MaximumExampleCount > 1, nameof(column.MaximumExampleCount), "Must be greater than 1");
+                    return new RobustScalerOneColumnFunctionBuilder(host, column.MaximumExampleCount, centerData, quantileMin, quantileMax, getter);
+                }
+
+                public override IColumnFunction CreateColumnFunction()
+                {
+                    _minMaxAggregator.Finish();
+                    _medianAggregator.Finish();
+
+                    double median = _medianAggregator.Median;
+                    double range = _minMaxAggregator.Max[0] - _minMaxAggregator.Min[0];
+                    // Divide the range by 100 because we need to make the number, i.e. 75, into a decimal, .75
+                    double quantileRange = (_quantileMax - _quantileMin) / 100f;
+                    double scale = 1 / (range * quantileRange);
+
+                    if (_centerData)
+                        return AffineColumnFunction.Create(Host, scale, median);
+                    else
+                        return AffineColumnFunction.Create(Host, scale, 0);
+                }
+            }
+
+            public sealed class RobustScalerVecFunctionBuilder : OneColumnFunctionBuilderBase<VBuffer<double>>
+            {
+                private readonly MinMaxDblAggregator _minMaxAggregator;
+                private readonly MedianDblAggregator[] _medianAggregators;
+                private readonly bool _centerData;
+                private readonly uint _quantileMin;
+                private readonly uint _quantileMax;
+
+                private RobustScalerVecFunctionBuilder(IHost host, long lim, int vectorSize, bool centerData, uint quantileMin, uint quantileMax, ValueGetter<VBuffer<double>> getSrc)
+                    : base(host, lim, getSrc)
+                {
+                    // Using the MinMax aggregator since that is what needs to be found here as well.
+                    // The difference is how the min/max are used.
+                    _minMaxAggregator = new MinMaxDblAggregator(vectorSize);
+
+                    // If we aren't centering data don't need the median.
+                    _medianAggregators = new MedianDblAggregator[vectorSize];
+
+                    for (int i = 0; i < vectorSize; i++)
+                    {
+                        _medianAggregators[i] = new MedianDblAggregator();
+                    }
+
+                    _centerData = centerData;
+                    _quantileMin = quantileMin;
+                    _quantileMax = quantileMax;
+                }
+
+                protected override bool ProcessValue(in VBuffer<double> val)
+                {
+                    if (!base.ProcessValue(in val))
+                        return false;
+                    _minMaxAggregator.ProcessValue(in val);
+
+                    // Have to calculate the median per slot
+                    var span = val.GetValues();
+                    for (int i = 0; i < _medianAggregators.Length; i++)
+                    {
+                        _medianAggregators[i].ProcessValue(span[i]);
+                    }
+
+                    return true;
+                }
+
+                public static IColumnFunctionBuilder Create(NormalizingEstimator.RobustScalingColumnOptions column, IHost host, VectorDataViewType srcType,
+                    bool centerData, uint quantileMin, uint quantileMax, ValueGetter<VBuffer<double>> getter)
+                {
+                    host.CheckUserArg(column.MaximumExampleCount > 1, nameof(column.MaximumExampleCount), "Must be greater than 1");
+                    var vectorSize = srcType.Size;
+                    return new RobustScalerVecFunctionBuilder(host, column.MaximumExampleCount, vectorSize, centerData, quantileMin, quantileMax, getter);
+                }
+
+                public override IColumnFunction CreateColumnFunction()
+                {
+                    _minMaxAggregator.Finish();
+
+                    double[] scale = new double[_medianAggregators.Length];
+                    double[] median = new double[_medianAggregators.Length];
+
+                    // Have to calculate the median per slot
+                    for (int i = 0; i < _medianAggregators.Length; i++)
+                    {
+                        _medianAggregators[i].Finish();
+                        median[i] = _medianAggregators[i].Median;
+
+                        double range = _minMaxAggregator.Max[i] - _minMaxAggregator.Min[i];
+
+                        // Divide the range by 100 because we need to make the number, i.e. 75, into a decimal, .75
+                        double quantileRange = (_quantileMax - _quantileMin) / 100f;
+                        scale[i] = 1 / (range * quantileRange);
+
+                    }
+
+                    if (_centerData)
+                        return AffineColumnFunction.Create(Host, scale, median, null);
+                    else
+                        return AffineColumnFunction.Create(Host, scale, null, null);
+
                 }
             }
         }

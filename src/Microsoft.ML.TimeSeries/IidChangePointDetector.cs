@@ -146,7 +146,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
         }
 
         // Factory method for SignatureLoadModel.
-        private static IidChangePointDetector Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static IidChangePointDetector Create(IHostEnvironment env, ModelLoadContext ctx)
         {
             Contracts.CheckValue(env, nameof(env));
             env.CheckValue(ctx, nameof(ctx));
@@ -155,7 +155,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
             return new IidChangePointDetector(env, ctx);
         }
 
-        internal IidChangePointDetector(IHostEnvironment env, ModelLoadContext ctx)
+        private IidChangePointDetector(IHostEnvironment env, ModelLoadContext ctx)
             : base(env, ctx, LoaderSignature)
         {
             // *** Binary format ***
@@ -207,6 +207,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
     /// | Does this estimator need to look at the data to train its parameters? | No |
     /// | Input column data type | <xref:System.Single> |
     /// | Output column data type | 4-element vector of<xref:System.Double> |
+    /// | Exportable to ONNX | No |
     ///
     /// [!include[io](~/../docs/samples/docs/api-reference/time-series-props.md)]
     ///
@@ -218,7 +219,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
     /// ]]>
     /// </format>
     /// </remarks>
-    /// <seealso cref="Microsoft.ML.TimeSeriesCatalog.DetectIidChangePoint(Microsoft.ML.TransformsCatalog,System.String,System.String,System.Int32,System.Int32,Microsoft.ML.Transforms.TimeSeries.MartingaleType,System.Double)" />
+    /// <seealso cref="Microsoft.ML.TimeSeriesCatalog.DetectIidChangePoint(Microsoft.ML.TransformsCatalog,System.String,System.String,System.Double,System.Int32,Microsoft.ML.Transforms.TimeSeries.MartingaleType,System.Double)" />
     public sealed class IidChangePointEstimator : TrivialEstimator<IidChangePointDetector>
     {
         /// <summary>
@@ -232,7 +233,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
         /// <param name="inputColumnName">Name of column to transform. If set to <see langword="null"/>, the value of the <paramref name="outputColumnName"/> will be used as source.</param>
         /// <param name="martingale">The martingale used for scoring.</param>
         /// <param name="eps">The epsilon parameter for the Power martingale.</param>
-        internal IidChangePointEstimator(IHostEnvironment env, string outputColumnName, int confidence,
+        internal IidChangePointEstimator(IHostEnvironment env, string outputColumnName, double confidence,
             int changeHistoryLength, string inputColumnName, MartingaleType martingale = MartingaleType.Power, double eps = 0.1)
             : base(Contracts.CheckRef(env, nameof(env)).Register(nameof(IidChangePointEstimator)),
                 new IidChangePointDetector(env, new IidChangePointDetector.Options

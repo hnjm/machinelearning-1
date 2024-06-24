@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -30,7 +30,7 @@ namespace Microsoft.ML.Data.IO
         /// <summary>
         /// The current version of the format this software can write.
         /// </summary>
-        //public const ulong WriterVersion = 0x0001000100010001; // This first version of the format, not publically released.
+        //public const ulong WriterVersion = 0x0001000100010001; // This first version of the format, not publicly released.
         //public const ulong WriterVersion = 0x0001000100010002; // Codec changes.
         //public const ulong WriterVersion = 0x0001000100010003; // Slot names.
         //public const ulong WriterVersion = 0x0001000100010004; // Column metadata.

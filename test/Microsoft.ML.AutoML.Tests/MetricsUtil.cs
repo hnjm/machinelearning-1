@@ -21,7 +21,7 @@ namespace Microsoft.ML.AutoML.Test
 
         public static MulticlassClassificationMetrics CreateMulticlassClassificationMetrics(
             double accuracyMicro, double accuracyMacro, double logLoss,
-            double logLossReduction, int topK, double topKAccuracy,
+            double logLossReduction, int topK, double[] topKAccuracy,
             double[] perClassLogLoss)
         {
             return CreateInstance<MulticlassClassificationMetrics>(accuracyMicro,
@@ -29,11 +29,17 @@ namespace Microsoft.ML.AutoML.Test
                 topKAccuracy, perClassLogLoss);
         }
 
-        public static RegressionMetrics CreateRegressionMetrics(double l1, 
+        public static RegressionMetrics CreateRegressionMetrics(double l1,
             double l2, double rms, double lossFn, double rSquared)
         {
             return CreateInstance<RegressionMetrics>(l1, l2,
                 rms, lossFn, rSquared);
+        }
+
+        public static RankingMetrics CreateRankingMetrics(double[] dcg,
+            double[] ndcg)
+        {
+            return CreateInstance<RankingMetrics>(dcg, ndcg);
         }
 
         private static T CreateInstance<T>(params object[] args)

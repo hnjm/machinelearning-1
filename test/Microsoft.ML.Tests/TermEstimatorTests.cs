@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -49,7 +49,7 @@ namespace Microsoft.ML.Tests
         }
 
         [Fact]
-        void TestDifferentTypes()
+        public void TestDifferentTypes()
         {
             string dataPath = GetDataPath("adult.tiny.with-schema.txt");
 
@@ -92,7 +92,7 @@ namespace Microsoft.ML.Tests
         }
 
         [Fact]
-        void TestSimpleCase()
+        public void TestSimpleCase()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
 
@@ -110,7 +110,7 @@ namespace Microsoft.ML.Tests
         }
 
         [Fact]
-        void TestOldSavingAndLoading()
+        public void TestOldSavingAndLoading()
         {
             var data = new[] { new TestClass() { A = 1, B = 2, C = 3, }, new TestClass() { A = 4, B = 5, C = 6 } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -132,7 +132,7 @@ namespace Microsoft.ML.Tests
         }
 
         [Fact]
-        void TestMetadataCopy()
+        public void TestMetadataCopy()
         {
             var data = new[] { new TestMetaClass() { Term = "A", NotUsed = 1 }, new TestMetaClass() { Term = "B" }, new TestMetaClass() { Term = "C" } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -150,7 +150,7 @@ namespace Microsoft.ML.Tests
         }
 
         [Fact]
-        void TestCommandLine()
+        public void TestCommandLine()
         {
             Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0} xf=Term{col=B:A} in=f:\2.txt" }));
         }

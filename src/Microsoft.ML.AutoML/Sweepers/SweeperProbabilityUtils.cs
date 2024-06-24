@@ -1,9 +1,10 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Microsoft.ML.Internal.CpuMath;
 
 namespace Microsoft.ML.AutoML
@@ -98,13 +99,15 @@ namespace Microsoft.ML.AutoML
                 }
                 else if (sweepParam is LongValueGenerator lvg)
                 {
+                    var longValue = GetIfIParameterValueOfT<long>(pset) ?? long.Parse(pset.ValueText, CultureInfo.InvariantCulture);
                     // Normalizing all numeric parameters to [0,1] range.
-                    result.Add(lvg.NormalizeValue(new LongParameterValue(pset.Name, long.Parse(pset.ValueText))));
+                    result.Add(lvg.NormalizeValue(new LongParameterValue(pset.Name, longValue)));
                 }
                 else if (sweepParam is FloatValueGenerator fvg)
                 {
+                    var floatValue = GetIfIParameterValueOfT<float>(pset) ?? float.Parse(pset.ValueText, CultureInfo.InvariantCulture);
                     // Normalizing all numeric parameters to [0,1] range.
-                    result.Add(fvg.NormalizeValue(new FloatParameterValue(pset.Name, float.Parse(pset.ValueText))));
+                    result.Add(fvg.NormalizeValue(new FloatParameterValue(pset.Name, floatValue)));
                 }
                 else
                 {
@@ -114,6 +117,10 @@ namespace Microsoft.ML.AutoML
 
             return result.ToArray();
         }
+
+        private static T? GetIfIParameterValueOfT<T>(IParameterValue parameterValue)
+            where T : struct =>
+            parameterValue is IParameterValue<T> pvt ? pvt.Value : default(T?);
 
         public static ParameterSet FloatArrayAsParameterSet(IValueGenerator[] sweepParams, float[] array, bool expandedCategoricals = true)
         {

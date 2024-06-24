@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -180,7 +180,7 @@ namespace Microsoft.ML.EntryPoints
         {
             Contracts.CheckValue(variableType, nameof(variableType));
 
-            // Option types should not be used to consturct graph.
+            // Option types should not be used to construct graph.
             if (variableType.IsGenericType && variableType.GetGenericTypeDefinition() == typeof(Optional<>))
                 return false;
 
@@ -293,9 +293,9 @@ namespace Microsoft.ML.EntryPoints
             _ectx.AssertValue(type);
 
             if (binding is ArrayIndexVariableBinding)
-                type = Utils.MarshalInvoke(MakeArray<int>, type);
+                type = type.MakeArrayType();
             else if (binding is DictionaryKeyVariableBinding)
-                type = Utils.MarshalInvoke(MakeDictionary<int>, type);
+                type = typeof(Dictionary<,>).MakeGenericType(typeof(string), type);
 
             EntryPointVariable v;
             if (!_vars.TryGetValue(binding.VariableName, out v))
@@ -306,16 +306,6 @@ namespace Microsoft.ML.EntryPoints
             else if (v.Type != type)
                 throw _ectx.Except($"Variable '{v.Name}' is used as {v.Type} and as {type}");
             v.MarkUsage(true);
-        }
-
-        private Type MakeArray<T>()
-        {
-            return typeof(T[]);
-        }
-
-        private Type MakeDictionary<T>()
-        {
-            return typeof(Dictionary<string, T>);
         }
 
         public void RemoveVariable(EntryPointVariable variable)
@@ -437,7 +427,7 @@ namespace Microsoft.ML.EntryPoints
 
         public TimeSpan RunTime { get; internal set; }
 
-        private static Regex _stageIdRegex = new Regex(@"[a-zA-Z0-9]*", RegexOptions.Compiled);
+        private static readonly Regex _stageIdRegex = new Regex(@"[a-zA-Z0-9]*", RegexOptions.Compiled);
         private string _stageId;
         /// <summary>
         /// An alphanumeric string indicating the stage of a node.
@@ -1070,7 +1060,7 @@ namespace Microsoft.ML.EntryPoints
         // An EntryPoint variable can be followed with an array or dictionary specifier, which begins
         // with '[', contains either an integer or alphanumeric string, optionally wrapped in single-quotes,
         // followed with ']'.
-        private static Regex _variableRegex = new Regex(
+        private static readonly Regex _variableRegex = new Regex(
             @"\$(?<Name>[a-zA-Z_][a-zA-Z0-9_]*)(\[(((?<NumericAccessor>[0-9]*))|(\'?(?<StringAccessor>[a-zA-Z0-9_]*)\'?))\])?",
             RegexOptions.Compiled);
 
@@ -1203,7 +1193,7 @@ namespace Microsoft.ML.EntryPoints
 
     /// <summary>
     /// Represents the l-value assignable destination of a <see cref="VariableBinding"/>.
-    /// Subclasses exist to express the needed bindinds for subslots
+    /// Subclasses exist to express the needed bindings for subslots
     /// of a yet-to-be-constructed array or dictionary EntryPoint input parameter
     /// (for example, "myVar": ["$var1", "$var2"] would yield two <see cref="ArrayIndexParameterBinding"/>: (myVar, 0), (myVar, 1))
     /// </summary>

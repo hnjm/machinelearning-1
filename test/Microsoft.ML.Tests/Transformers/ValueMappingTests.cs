@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -337,7 +337,7 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestDuplicateKeys()
+        public void TestDuplicateKeys()
         {
             var data = new[] { new TestClass() { A = "barTest", B = "test", C = "foo" } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -370,7 +370,7 @@ namespace Microsoft.ML.Tests.Transformers
             var est = ML.Transforms.Conversion.MapValue(keyValuePairs,
                 new[] { new InputOutputColumnPair("D", "A"), new InputOutputColumnPair("E", "B"), new InputOutputColumnPair("F", "C") });
 
-            var outputSchema  = est.GetOutputSchema(SchemaShape.Create(dataView.Schema));
+            var outputSchema = est.GetOutputSchema(SchemaShape.Create(dataView.Schema));
 
             Assert.Equal(6, outputSchema.Count());
             Assert.True(outputSchema.TryFindColumn("D", out SchemaShape.Column dColumn));
@@ -402,7 +402,7 @@ namespace Microsoft.ML.Tests.Transformers
             var estimator = ML.Transforms.Conversion.MapValue(keyValuePairs, true,
                 new[] { new InputOutputColumnPair("D", "A"), new InputOutputColumnPair("E", "B"), new InputOutputColumnPair("F", "C") });
 
-            var outputSchema  = estimator.GetOutputSchema(SchemaShape.Create(dataView.Schema));
+            var outputSchema = estimator.GetOutputSchema(SchemaShape.Create(dataView.Schema));
             Assert.Equal(6, outputSchema.Count());
             Assert.True(outputSchema.TryFindColumn("D", out SchemaShape.Column dColumn));
             Assert.True(outputSchema.TryFindColumn("E", out SchemaShape.Column eColumn));
@@ -610,7 +610,7 @@ namespace Microsoft.ML.Tests.Transformers
             var badData = new[] { new TestWrong() { A = "bar", B = 1.2f } };
             var badDataView = ML.Data.LoadFromEnumerable(badData);
 
-            var keyValuePairs = new List<KeyValuePair<string,int[]>>() {
+            var keyValuePairs = new List<KeyValuePair<string, int[]>>() {
                 new KeyValuePair<string,int[]>("foo", new int[] {2, 3, 4 }),
                 new KeyValuePair<string,int[]>("bar", new int[] {100, 200 }),
                 new KeyValuePair<string,int[]>("test", new int[] {400, 500, 600, 700 }),
@@ -630,11 +630,11 @@ namespace Microsoft.ML.Tests.Transformers
             var badData = new[] { new TestWrong() { B = 1.2f } };
             var badDataView = ML.Data.LoadFromEnumerable(badData);
 
-            var keyValuePairs = new List<KeyValuePair<ReadOnlyMemory<char>,int>>() {
+            var keyValuePairs = new List<KeyValuePair<ReadOnlyMemory<char>, int>>() {
                 new KeyValuePair<ReadOnlyMemory<char>,int>("foo".AsMemory(), 1),
                 new KeyValuePair<ReadOnlyMemory<char>,int>("bar".AsMemory(), 2),
                 new KeyValuePair<ReadOnlyMemory<char>,int>("test".AsMemory(), 3),
-                new KeyValuePair<ReadOnlyMemory<char>,int>("wahoo".AsMemory(), 4) 
+                new KeyValuePair<ReadOnlyMemory<char>,int>("wahoo".AsMemory(), 4)
                 };
 
             var est = ML.Transforms.Text.TokenizeIntoWords("TokenizeB", "B")
@@ -643,43 +643,43 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestCommandLine()
+        public void TestCommandLine()
         {
             var dataFile = GetDataPath("QuotingData.csv");
-            Assert.Equal(Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=valuemap{keyCol=ID valueCol=Text data="
+            Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=valuemap{keyCol=ID valueCol=Text data="
                                     + dataFile
-                                    + @" col=A:B loader=Text{col=ID:U8:0 col=Text:TX:1 sep=, header=+} } in=f:\1.txt" }), (int)0);
+                                    + @" col=A:B loader=Text{col=ID:U8:0 col=Text:TX:1 sep=, header=+} } in=f:\1.txt" }));
         }
 
         [Fact]
-        void TestCommandLineNoLoader()
+        public void TestCommandLineNoLoader()
         {
             var dataFile = GetDataPath("lm.labels.txt");
-            Assert.Equal(Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=valuemap{data="
+            Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=valuemap{data="
                                     + dataFile
-                                    + @" col=A:B } in=f:\1.txt" }), (int)0);
+                                    + @" col=A:B } in=f:\1.txt" }));
         }
 
         [Fact]
-        void TestCommandLineNoLoaderWithColumnNames()
+        public void TestCommandLineNoLoaderWithColumnNames()
         {
             var dataFile = GetDataPath("lm.labels.txt");
-            Assert.Equal(Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=valuemap{data="
+            Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=valuemap{data="
                                     + dataFile
-                                    + @" col=A:B keyCol=foo valueCol=bar} in=f:\1.txt" }), (int)0);
+                                    + @" col=A:B keyCol=foo valueCol=bar} in=f:\1.txt" }));
         }
 
         [Fact]
-        void TestCommandLineNoLoaderWithoutTreatValuesAsKeys()
+        public void TestCommandLineNoLoaderWithoutTreatValuesAsKeys()
         {
             var dataFile = GetDataPath("lm.labels.txt");
-            Assert.Equal(Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=valuemap{data="
+            Assert.Equal(0, Maml.Main(new[] { @"showschema loader=Text{col=A:R4:0 col=B:R4:1 col=C:R4:2} xf=valuemap{data="
                                     + dataFile
-                                    + @" col=A:B valuesAsKeyType=-} in=f:\1.txt" }), (int)0);
+                                    + @" col=A:B valuesAsKeyType=-} in=f:\1.txt" }));
         }
 
         [Fact]
-        void TestSavingAndLoading()
+        public void TestSavingAndLoading()
         {
             var data = new[] { new TestClass() { A = "bar", B = "foo", C = "test", } };
             var dataView = ML.Data.LoadFromEnumerable(data);
@@ -707,7 +707,7 @@ namespace Microsoft.ML.Tests.Transformers
 
 
         [Fact]
-        void TestValueMapBackCompatTermLookup()
+        public void TestValueMapBackCompatTermLookup()
         {
             // Model generated with: xf=drop{col=A} 
             // Expected output: Features Label B C
@@ -724,7 +724,7 @@ namespace Microsoft.ML.Tests.Transformers
         }
 
         [Fact]
-        void TestValueMapBackCompatTermLookupKeyTypeValue()
+        public void TestValueMapBackCompatTermLookupKeyTypeValue()
         {
             // Model generated with: xf=drop{col=A} 
             // Expected output: Features Label B C
@@ -785,7 +785,7 @@ namespace Microsoft.ML.Tests.Transformers
 
             var expectedCategories = new string[] { "Low", "High", "Low", "Low", "Medium" };
 
-            for(int i = 0; i < features.Count; ++i)
+            for (int i = 0; i < features.Count; ++i)
             {
                 var feature = features[i];
                 Assert.Equal(rawData[i].Price, feature.Price);

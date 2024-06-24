@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -18,15 +18,15 @@ namespace Microsoft.ML.Trainers.FastTree
         private readonly int[] _oneTwoThree;
 
         // reusable memory
-        private int[][] _permutationBuffers;
-        private double[][] _scoreBuffers;
-        private DcgPermutationComparer[] _comparers;
+        private readonly int[][] _permutationBuffers;
+        private readonly double[][] _scoreBuffers;
+        private readonly DcgPermutationComparer[] _comparers;
 
         /// <summary>
         /// Contains the instances for a second Level comparer, which gets applied after the initial rank
         /// based ordering has happened. The array stores one second level comparer per thread.
         /// </summary>
-        private DescendingStableIdealComparer[] _secondLevelcomparers;
+        private readonly DescendingStableIdealComparer[] _secondLevelcomparers;
 
         private double _result;
 
@@ -252,7 +252,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
         /// <summary>
         /// Efficient computation of average NDCG@1 for the entire dataset
-        /// Note that it is virtual and MPI provides faster implemetations for MPI
+        /// Note that it is virtual and MPI provides faster implementations for MPI
         /// </summary>
         /// <param name="dataset">the dataset</param>
         /// <param name="labels"></param>
@@ -367,7 +367,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
             int chunkSize = 1 + dataset.NumQueries / BlockingThreadPool.NumThreads;   // Minimizes the number of repeat computations in sparse array to have each thread take as big a chunk as possible
             // REVIEW: This partitioning doesn't look optimal.
-            // Probably make sence to investigate better ways of splitting data?
+            // Probably make sense to investigate better ways of splitting data?
             var actions = new Action[(int)Math.Ceiling(1.0 * dataset.NumQueries / chunkSize)];
             var actionIndex = 0;
             for (int q = 0; q < dataset.NumQueries; q += chunkSize)
@@ -506,7 +506,7 @@ namespace Microsoft.ML.Trainers.FastTree
 
             int chunkSize = 1 + dataset.NumQueries / BlockingThreadPool.NumThreads;   // Minimizes the number of repeat computations in sparse array to have each thread take as big a chunk as possible
             // REVIEW: This partitioning doesn't look optimal.
-            // Probably make sence to investigate better ways of splitting data?
+            // Probably make sense to investigate better ways of splitting data?
             var actions = new Action[(int)Math.Ceiling(1.0 * dataset.NumQueries / chunkSize)];
             var actionIndex = 0;
             for (int q = 0; q < dataset.NumQueries; q += chunkSize)

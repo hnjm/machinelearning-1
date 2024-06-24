@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -138,7 +138,7 @@ namespace Microsoft.ML.EntryPoints
             host.CheckNonEmpty(input.ModelArray, nameof(input.ModelArray));
             // Something tells me we should put normalization as part of macro expansion, but since i get
             // subgraph instead of learner it's a bit tricky to get learner and decide should we add
-            // normalization node or not, plus everywhere in code we leave that reposnsibility to TransformModel.
+            // normalization node or not, plus everywhere in code we leave that responsibility to TransformModel.
             var normalizedView = input.ModelArray[0].TransformModel.Apply(host, input.TrainingData);
             using (var ch = host.Start("CombineOvaModels"))
             {

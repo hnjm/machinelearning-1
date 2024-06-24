@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.ML;
@@ -52,7 +52,7 @@ namespace Samples.Dynamic
             // Setup SsaChangePointDetector arguments
             var inputColumnName = nameof(TimeSeriesData.Value);
             var outputColumnName = nameof(ChangePointPrediction.Prediction);
-            int confidence = 95;
+            double confidence = 95;
             int changeHistoryLength = 8;
 
             // Train the change point detector.
@@ -68,7 +68,7 @@ namespace Samples.Dynamic
             // prediction engine.
             Console.WriteLine($"Output from ChangePoint predictions on new data:");
             Console.WriteLine("Data\tAlert\tScore\tP-Value\tMartingale value");
-            
+
             // Output from ChangePoint predictions on new data:
             // Data    Alert   Score   P-Value Martingale value
 

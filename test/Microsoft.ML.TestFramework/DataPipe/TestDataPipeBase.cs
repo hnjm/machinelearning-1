@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -31,7 +31,7 @@ namespace Microsoft.ML.RunTests
         /// - schema propagation for fitted transformer conforms to schema propagation of estimator.
         /// </summary>
         protected void TestEstimatorCore(IEstimator<ITransformer> estimator,
-            IDataView validFitInput, IDataView validTransformInput = null, IDataView invalidInput = null, IDataView validForFitNotValidForTransformInput = null)
+            IDataView validFitInput, IDataView validTransformInput = null, IDataView invalidInput = null, IDataView validForFitNotValidForTransformInput = null, bool shouldDispose = false)
         {
             Contracts.AssertValue(estimator);
             Contracts.AssertValue(validFitInput);
@@ -147,6 +147,8 @@ namespace Microsoft.ML.RunTests
             // Schema verification between estimator and transformer.
             var scoredTrainSchemaShape = SchemaShape.Create(transformer.GetOutputSchema(validFitInput.Schema));
             CheckSameSchemaShape(outSchemaShape, scoredTrainSchemaShape);
+            (loadedTransformer as IDisposable)?.Dispose();
+            if (shouldDispose) (transformer as IDisposable)?.Dispose();
         }
 
         private void CheckSameSchemaShape(SchemaShape promised, SchemaShape delivered)
@@ -312,7 +314,7 @@ namespace Microsoft.ML.RunTests
 
             // Default to breast-cancer.txt.
             if (string.IsNullOrEmpty(pathData))
-                pathData = GetDataPath("breast-cancer.txt");
+                pathData = GetDataPath(TestDatasets.breastCancer.trainFilename);
 
             files = new MultiFileSource(pathData == "<none>" ? null : pathData);
             var sub = new SubComponent<ILegacyDataLoader, SignatureDataLoader>("Pipe", argsPipe);
@@ -410,7 +412,7 @@ namespace Microsoft.ML.RunTests
                 view = new ChooseColumnsByIndexTransform(env, chooseargs, view);
             }
 
-            var args = new TextLoader.Options() { AllowSparse = true, AllowQuoting = true};
+            var args = new TextLoader.Options() { AllowSparse = true, AllowQuoting = true };
             if (!CmdParser.ParseArguments(Env, argsLoader, args))
             {
                 Fail("Couldn't parse the args '{0}' in '{1}'", argsLoader, pathData);
@@ -430,7 +432,7 @@ namespace Microsoft.ML.RunTests
             return true;
         }
 
-        protected private string SavePipe(ILegacyDataLoader pipe, string suffix = "", string dir = "Pipeline")
+        private protected string SavePipe(ILegacyDataLoader pipe, string suffix = "", string dir = "Pipeline")
         {
             string name = TestName + suffix + ".zip";
             string pathModel = DeleteOutputPath("SavePipe", name);
@@ -664,7 +666,7 @@ namespace Microsoft.ML.RunTests
             Check(tmp, "All same failed");
             all &= tmp;
 
-            var view2EvenCols = view2.Schema.Where(col => (col.Index & 1) == 0); 
+            var view2EvenCols = view2.Schema.Where(col => (col.Index & 1) == 0);
             using (var curs1 = view1.GetRowCursorForAllColumns())
             using (var curs2 = view2.GetRowCursor(view2EvenCols))
             {
@@ -898,7 +900,12 @@ namespace Microsoft.ML.RunTests
                 else if (rawType == typeof(ulong))
                     return GetComparerOne<ulong>(r1, r2, col, (x, y) => x == y);
                 else if (rawType == typeof(float))
-                    return GetComparerOne<float>(r1, r2, col, (x, y) => FloatUtils.GetBits(x) == FloatUtils.GetBits(y));
+                {
+                    if (exactDoubles)
+                        return GetComparerOne<float>(r1, r2, col, (x, y) => FloatUtils.GetBits(x) == FloatUtils.GetBits(y));
+                    else
+                        return GetComparerOne<float>(r1, r2, col, EqualWithEpsSingle);
+                }
                 else if (rawType == typeof(double))
                 {
                     if (exactDoubles)

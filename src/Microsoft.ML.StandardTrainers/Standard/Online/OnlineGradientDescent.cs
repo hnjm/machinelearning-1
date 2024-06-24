@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -41,6 +41,7 @@ namespace Microsoft.ML.Trainers
     /// | Is normalization required? | Yes |
     /// | Is caching required? | No |
     /// | Required NuGet in addition to Microsoft.ML | None |
+    /// | Exportable to ONNX | Yes |
     ///
     /// ### Training Algorithm Details
     /// Stochastic gradient descent uses a simple yet efficient iterative technique to fit model coefficients using error gradients for convex loss functions.
@@ -147,7 +148,7 @@ namespace Microsoft.ML.Trainers
             {
                 LearningRate = learningRate,
                 DecreaseLearningRate = decreaseLearningRate,
-                L2Regularization= l2Regularization,
+                L2Regularization = l2Regularization,
                 NumberOfIterations = numberOfIterations,
                 LabelColumnName = labelColumn,
                 FeatureColumnName = featureColumn,

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -128,7 +128,7 @@ namespace Microsoft.ML.Transforms
                 {
                     var item = options.Columns[i];
                     cols[i] = (item.Name, item.Source ?? item.Name);
-                };
+                }
             }
             return new KeyToBinaryVectorMappingTransformer(env, cols).MakeDataTransform(input);
         }
@@ -437,6 +437,7 @@ namespace Microsoft.ML.Transforms
     /// | Does this estimator need to look at the data to train its parameters? | No |
     /// | Input column data type | [key](xref:Microsoft.Ml.Data.KeyDataViewType) or a known-size vector of keys. |
     /// | Output column data type | A known-size vector of [System.Single](xref:System.Single). |
+    /// | Exportable to ONNX | No |
     ///
     /// Check the See Also section for links to usage examples.
     /// ]]></format>

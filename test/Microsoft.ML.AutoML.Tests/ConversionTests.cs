@@ -4,19 +4,20 @@
 
 using System;
 using Microsoft.ML.Data.Conversion;
+using Microsoft.ML.TestFramework;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace Microsoft.ML.AutoML.Test
 {
-    
-    public class ConversionTests
-    {
-        private readonly ITestOutputHelper output;
 
-        public ConversionTests(ITestOutputHelper output)
+    public class ConversionTests : BaseTestClass
+    {
+        private readonly ITestOutputHelper _output;
+
+        public ConversionTests(ITestOutputHelper output) : base(output)
         {
-            this.output = output;
+            _output = output;
         }
 
         [Fact]
@@ -30,11 +31,11 @@ namespace Microsoft.ML.AutoML.Test
                 "NA", "N/A", "NaN", "NAN"
             };
 
-            foreach(var missingValue in missingValues)
+            foreach (var missingValue in missingValues)
             {
                 float value;
-                var success = Conversions.Instance.TryParse(missingValue.AsMemory(), out value);
-                output.WriteLine($"{missingValue} parsed as {value}");
+                var success = Conversions.DefaultInstance.TryParse(missingValue.AsMemory(), out value);
+                _output.WriteLine($"{missingValue} parsed as {value}");
                 Assert.True(success);
                 //Assert.Equal(float.NaN, value);
             }
@@ -45,12 +46,12 @@ namespace Microsoft.ML.AutoML.Test
         {
             var values = new string[]
             {
-                "a", "aa", "nb", "aaa", "naa", "nba", "n/b" 
+                "a", "aa", "nb", "aaa", "naa", "nba", "n/b"
             };
 
             foreach (var value in values)
             {
-                var success = Conversions.Instance.TryParse(value.AsMemory(), out float _);
+                var success = Conversions.DefaultInstance.TryParse(value.AsMemory(), out float _);
                 Assert.False(success);
             }
         }
@@ -69,7 +70,7 @@ namespace Microsoft.ML.AutoML.Test
 
             foreach (var missingValue in missingValues)
             {
-                var success = Conversions.Instance.TryParse(missingValue.AsMemory(), out bool _);
+                var success = Conversions.DefaultInstance.TryParse(missingValue.AsMemory(), out bool _);
                 Assert.True(success);
             }
         }
@@ -87,7 +88,7 @@ namespace Microsoft.ML.AutoML.Test
 
             foreach (var value in values)
             {
-                var success = Conversions.Instance.TryParse(value.AsMemory(), out bool _);
+                var success = Conversions.DefaultInstance.TryParse(value.AsMemory(), out bool _);
                 Assert.False(success);
             }
         }

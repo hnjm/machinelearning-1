@@ -5,11 +5,11 @@ You can build ML.NET either via the command line or by using Visual Studio.
 
 ## Required Software
 
-1. **[Visual Studio 2019 Version 16.3](https://www.visualstudio.com/downloads/) (Community, Professional, Enterprise)** The Community version is completely free. The below build instructions were verified for VS 16.3.
-2. **[CMake](https://cmake.org/)** must be installed from [the CMake download page](https://cmake.org/download/#latest) and added to your path.
+1. **[Visual Studio 2019 Version 16.4+](https://www.visualstudio.com/downloads/) (Community, Professional, Enterprise)** The Community version is completely free. The below build instructions were verified for VS 16.4.
+2. **[CMake](https://cmake.org/)** must be installed from [the CMake download page](https://cmake.org/download/#latest) and added to your path. If you want to use Visual Studio 2022, you need to be using at least CMake 3.21.
 
 ### Visual Studio 2019 Installation
-We have successfully verified the below build instructions for Visual Studio version 16.3 and higher. 
+We have successfully verified the below build instructions for Visual Studio version 16.4 and higher.
 
 #### Visual Studio 2019 - 'Workloads' based install
 
@@ -28,7 +28,7 @@ The following are the minimum requirements:
 
 The following are the minimum requirements:
   * C# and Visual Basic Roslyn Compilers
-  * .NET Core 3.0 SDK
+  * .NET Core 3.1 SDK
   * Static Analysis Tools
   * .NET Portable Library Targeting Pack
   * Visual Studio C++ Core Features
@@ -36,6 +36,12 @@ The following are the minimum requirements:
   * MSBuild
   * .NET Framework 4.6 Targeting Pack
   * Windows Universal CRT SDK
+
+#### Visual Studio 2019 - Cross compilation for ARM
+
+If you want to cross compile for arm you will also need from the 'Individual components' section:
+  * MSVC v142 - VS 2019 C++ ARM build tools
+  * MSVC v142 - VS 2019 C++ ARM64 build tools
 
 ## Building Instructions
 
@@ -51,26 +57,48 @@ After successfully running the command, the project can be built directly from t
 
 ### Building From the Command Line
 
-You can use the Developer Command Prompt, Powershell or work in any regular cmd. The Developer Command Prompt will have a name like "Developer Command Prompt for VS 2019" or similar in your start menu. 
+You can use the Developer Command Prompt, Powershell or work in any regular cmd. The Developer Command Prompt will have a name like "Developer Command Prompt for VS 2019" or similar in your start menu.
 
 From a (non-admin) Command Prompt window:
 
 - `build.cmd` - builds the assemblies
-- `build.cmd -runTests` - called after a normal "build.cmd" will run all tests
-- `build.cmd -buildPackages` called after a normal “build.cmd” will create the NuGet packages with the assemblies in “bin"
+- `build.cmd -test -integrationTest` - builds the assemblies and runs all tests, including integration tests.
+- `build.cmd -pack` builds the assemblies and generates the corresponding NuGet packages with the assemblies in `artifacts\packages`"
 
 **Note**: Before working on individual projects or test projects you **must** run `build.cmd` from the root once before beginning that work. It is also a good idea to run `build.cmd` whenever you pull a large set of unknown changes into your branch.
+
+### Cross compiling for ARM
+
+You can use the Developer Command Prompt, Powershell or work in any regular cmd. The Developer Command Prompt will have a name like "Developer Command Prompt for VS 2019" or similar in your start menu.
+
+From a (non-admin) Command Prompt window based on what you want to target:
+
+- `build.cmd /p:TargetArchitecture=arm`
+- `build.cmd /p:TargetArchitecture=arm64`
+
+You can then pack them into nugets, pick the same target architecture you built with:
+
+- `build.cmd /p:TargetArchitecture=arm -pack`
+- `build.cmd /p:TargetArchitecture=arm64 -pack`
 
 ## Running Tests
 
 ### Running tests from Visual Studio
 
-After successfully building, run tests in the Visual Studio Test Explorer window.
+After successfully building, run tests through the Visual Studio Test Explorer window.
+
+Before running tests on Visual Studio, make sure you have selected the correct processor architecture (`x64`, `x86`) for running unit tests that your machine supports and that you have built ML.NET on. To check, click on the settings image in the Test Explorer window, then on "Process Architecture for AnyCPU Projects", and then on the correct architecture type, as demonstrated in the image below:
+
+![Check for unit test process architecture](./assets/process_architecture_run_tests_vs.png)
 
 ### Running tests from the command line
 
-From the root, run `build.cmd` and then `build.cmd -runTests`.
-For more details, or to test an individual project, you can navigate to the test project directory and then use `dotnet test`
+From root, run `build.cmd -test -integrationTest`.
+For more details, or to test an individual project, you can navigate to the test project directory and then use `dotnet test`.
+
+## Running Benchmarks
+
+For more information on running ML.NET benchmarks, please visit the [benchmarking instructions](../../test/Microsoft.ML.PerformanceTests/README.md).
 
 ## Known Issues
 

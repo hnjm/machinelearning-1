@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -13,9 +13,9 @@ namespace Microsoft.ML.AutoML
         /// </summary>
         /// <returns>Array of viable learners.</returns>
         public static IEnumerable<SuggestedTrainer> AllowedTrainers(MLContext mlContext, TaskKind task,
-            ColumnInformation columnInfo, IEnumerable<TrainerName> trainerWhitelist)
+            ColumnInformation columnInfo, IEnumerable<TrainerName> trainerAllowList)
         {
-            var trainerExtensions = TrainerExtensionCatalog.GetTrainers(task, trainerWhitelist, columnInfo);
+            var trainerExtensions = TrainerExtensionCatalog.GetTrainers(task, trainerAllowList, columnInfo);
 
             var trainers = new List<SuggestedTrainer>();
             foreach (var trainerExtension in trainerExtensions)

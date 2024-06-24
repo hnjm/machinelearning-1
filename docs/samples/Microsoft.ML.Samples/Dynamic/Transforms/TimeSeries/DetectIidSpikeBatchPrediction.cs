@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.ML;
 using Microsoft.ML.Data;
@@ -45,7 +45,7 @@ namespace Samples.Dynamic
 
             // The transformed data.
             var transformedData = ml.Transforms.DetectIidSpike(outputColumnName,
-                inputColumnName, 95, Size / 4).Fit(dataView).Transform(dataView);
+                inputColumnName, 95.0d, Size / 4).Fit(dataView).Transform(dataView);
 
             // Getting the data of the newly created column as an IEnumerable of
             // IidSpikePrediction.
@@ -77,7 +77,7 @@ namespace Samples.Dynamic
         }
 
         private static void PrintPrediction(float value, IidSpikePrediction
-            prediction) => 
+            prediction) =>
             Console.WriteLine("{0}\t{1}\t{2:0.00}\t{3:0.00}", value,
             prediction.Prediction[0], prediction.Prediction[1],
             prediction.Prediction[2]);

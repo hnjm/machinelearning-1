@@ -5,23 +5,31 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Xunit;
+using Microsoft.ML.Runtime;
+using Microsoft.ML.TestFramework;
 using Newtonsoft.Json;
+using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.ML.AutoML.Test
 {
-    
-    public class GetNextPipelineTests
+
+    public class GetNextPipelineTests : BaseTestClass
     {
+        public GetNextPipelineTests(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         public void GetNextPipeline()
         {
-            var context = new MLContext();
+            var context = new MLContext(1);
             var uciAdult = DatasetUtil.GetUciAdultDataView();
             var columns = DatasetColumnInfoUtil.GetDatasetColumnInfo(context, uciAdult, new ColumnInformation() { LabelColumnName = DatasetUtil.UciAdultLabel });
 
             // get next pipeline
-            var pipeline = PipelineSuggester.GetNextPipeline(context, new List<PipelineScore>(), columns, TaskKind.BinaryClassification);
+            var pipeline = PipelineSuggester.GetNextPipeline(context, new List<PipelineScore>(), columns,
+                TaskKind.BinaryClassification, ((IChannelProvider)context).Start("AutoMLTest"));
 
             // serialize & deserialize pipeline
             var serialized = JsonConvert.SerializeObject(pipeline);
@@ -40,7 +48,7 @@ namespace Microsoft.ML.AutoML.Test
         [Fact]
         public void GetNextPipelineMock()
         {
-            var context = new MLContext();
+            var context = new MLContext(1);
             var uciAdult = DatasetUtil.GetUciAdultDataView();
             var columns = DatasetColumnInfoUtil.GetDatasetColumnInfo(context, uciAdult, new ColumnInformation() { LabelColumnName = DatasetUtil.UciAdultLabel });
 
@@ -51,7 +59,7 @@ namespace Microsoft.ML.AutoML.Test
             for (var i = 0; i < maxIterations; i++)
             {
                 // Get next pipeline
-                var pipeline = PipelineSuggester.GetNextPipeline(context, history, columns, task);
+                var pipeline = PipelineSuggester.GetNextPipeline(context, history, columns, task, ((IChannelProvider)context).Start("AutoMLTest"));
                 if (pipeline == null)
                 {
                     break;

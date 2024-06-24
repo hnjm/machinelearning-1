@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -12,6 +12,24 @@ namespace Microsoft.ML.Internal.Utilities
     [BestFriend]
     internal static class DoubleParser
     {
+        [BestFriend]
+        [Flags]
+        internal enum OptionFlags : uint
+        {
+            Default = 0x00,
+
+            // If this flag is set, then a "," will be used as Decimal Marker
+            // (i.e., the punctuation mark that separates the integer part of
+            // a number and its decimal part). If this isn't set, then
+            // default behavior is to use "." as decimal marker.
+            UseCommaAsDecimalMarker = 0x01,
+
+            // If this flag is set, then empty spans (or those with only white-space)
+            // will be parsed as NaN. If it isn't set, then default behavior
+            // is to return them as 0.
+            EmptyAsNaN = 0x02,
+        }
+
         private const ulong TopBit = 0x8000000000000000UL;
         private const ulong TopTwoBits = 0xC000000000000000UL;
         private const ulong TopThreeBits = 0xE000000000000000UL;
@@ -68,33 +86,37 @@ namespace Microsoft.ML.Internal.Utilities
         }
 
         /// <summary>
-        /// This produces zero for an empty string.
+        /// This produces zero for an empty string, or NaN depending on the <see cref="DoubleParser.OptionFlags.EmptyAsNaN"/> used.
         /// </summary>
-        public static bool TryParse(ReadOnlySpan<char> span, out Single value)
+        public static bool TryParse(ReadOnlySpan<char> span, out Single value, OptionFlags flags = OptionFlags.Default)
         {
-            var res = Parse(span, out value);
-            Contracts.Assert(res != Result.Empty || value == 0);
+            var res = Parse(span, out value, flags);
+            Contracts.Assert(res != Result.Empty || ((flags & OptionFlags.EmptyAsNaN) == 0 && value == 0) || Single.IsNaN(value));
             return res <= Result.Empty;
         }
 
         /// <summary>
-        /// This produces zero for an empty string.
+        /// This produces zero for an empty string, or NaN depending on the <see cref="DoubleParser.OptionFlags.EmptyAsNaN"/> used.
         /// </summary>
-        public static bool TryParse(ReadOnlySpan<char> span, out Double value)
+        public static bool TryParse(ReadOnlySpan<char> span, out Double value, OptionFlags flags = OptionFlags.Default)
         {
-            var res = Parse(span, out value);
-            Contracts.Assert(res != Result.Empty || value == 0);
+            var res = Parse(span, out value, flags);
+            Contracts.Assert(res != Result.Empty || ((flags & OptionFlags.EmptyAsNaN) == 0 && value == 0) || Double.IsNaN(value));
             return res <= Result.Empty;
         }
 
-        public static Result Parse(ReadOnlySpan<char> span, out Single value)
+        public static Result Parse(ReadOnlySpan<char> span, out Single value, OptionFlags flags = OptionFlags.Default)
         {
             int ich = 0;
             for (; ; ich++)
             {
                 if (ich >= span.Length)
                 {
-                    value = 0;
+                    if ((flags & OptionFlags.EmptyAsNaN) == 0)
+                        value = 0;
+                    else
+                        value = Single.NaN;
+
                     return Result.Empty;
                 }
                 if (!char.IsWhiteSpace(span[ich]))
@@ -118,7 +140,7 @@ namespace Microsoft.ML.Internal.Utilities
             }
 
             int ichEnd;
-            if (!DoubleParser.TryParse(span.Slice(ich, span.Length - ich), out value, out ichEnd))
+            if (!DoubleParser.TryParse(span.Slice(ich, span.Length - ich), out value, out ichEnd, flags))
             {
                 value = default(Single);
                 return Result.Error;
@@ -135,14 +157,18 @@ namespace Microsoft.ML.Internal.Utilities
             return Result.Good;
         }
 
-        public static Result Parse(ReadOnlySpan<char> span, out Double value)
+        public static Result Parse(ReadOnlySpan<char> span, out Double value, OptionFlags flags = OptionFlags.Default)
         {
             int ich = 0;
             for (; ; ich++)
             {
                 if (ich >= span.Length)
                 {
-                    value = 0;
+                    if ((flags & OptionFlags.EmptyAsNaN) == 0)
+                        value = 0;
+                    else
+                        value = Double.NaN;
+
                     return Result.Empty;
                 }
                 if (!char.IsWhiteSpace(span[ich]))
@@ -166,7 +192,7 @@ namespace Microsoft.ML.Internal.Utilities
             }
 
             int ichEnd;
-            if (!DoubleParser.TryParse(span.Slice(ich, span.Length - ich), out value, out ichEnd))
+            if (!DoubleParser.TryParse(span.Slice(ich, span.Length - ich), out value, out ichEnd, flags))
             {
                 value = default(Double);
                 return Result.Error;
@@ -183,14 +209,14 @@ namespace Microsoft.ML.Internal.Utilities
             return Result.Good;
         }
 
-        public static bool TryParse(ReadOnlySpan<char> span, out Single value, out int ichEnd)
+        public static bool TryParse(ReadOnlySpan<char> span, out Single value, out int ichEnd, OptionFlags flags = OptionFlags.Default)
         {
             bool neg = false;
             ulong num = 0;
             long exp = 0;
 
             ichEnd = 0;
-            if (!TryParseCore(span, ref ichEnd, ref neg, ref num, ref exp))
+            if (!TryParseCore(span, ref ichEnd, ref neg, ref num, ref exp, flags))
                 return TryParseSpecial(span, ref ichEnd, out value);
 
             if (num == 0)
@@ -239,7 +265,7 @@ namespace Microsoft.ML.Internal.Utilities
             res *= tmp;
             value = (Single)res;
 
-        LDone:
+LDone:
             if (neg)
                 value = -value;
 
@@ -272,14 +298,14 @@ namespace Microsoft.ML.Internal.Utilities
             return true;
         }
 
-        public static bool TryParse(ReadOnlySpan<char> span, out Double value, out int ichEnd)
+        public static bool TryParse(ReadOnlySpan<char> span, out Double value, out int ichEnd, OptionFlags flags = OptionFlags.Default)
         {
             bool neg = false;
             ulong num = 0;
             long exp = 0;
 
             ichEnd = 0;
-            if (!TryParseCore(span, ref ichEnd, ref neg, ref num, ref exp))
+            if (!TryParseCore(span, ref ichEnd, ref neg, ref num, ref exp, flags))
                 return TryParseSpecial(span, ref ichEnd, out value);
 
             if (num == 0)
@@ -419,11 +445,11 @@ namespace Microsoft.ML.Internal.Utilities
             }
 
             // Multiply by the exponent adjustment.
-            Contracts.Assert(0 < e2 & e2 < 0x7FF);
+            Contracts.Assert(0 < e2 && e2 < 0x7FF);
             mul = (ulong)e2 << 52;
             unsafe { value *= *(Double*)&mul; }
 
-        LDone:
+LDone:
             if (neg)
                 value = -value;
 
@@ -520,12 +546,18 @@ namespace Microsoft.ML.Internal.Utilities
             return false;
         }
 
-        private static bool TryParseCore(ReadOnlySpan<char> span, ref int ich, ref bool neg, ref ulong num, ref long exp)
+        private static bool TryParseCore(ReadOnlySpan<char> span, ref int ich, ref bool neg, ref ulong num, ref long exp, OptionFlags flags = OptionFlags.Default)
         {
-            Contracts.Assert(0 <= ich & ich <= span.Length);
+            Contracts.Assert(0 <= ich && ich <= span.Length);
             Contracts.Assert(!neg);
             Contracts.Assert(num == 0);
             Contracts.Assert(exp == 0);
+
+            char decimalMarker;
+            if ((flags & OptionFlags.UseCommaAsDecimalMarker) != 0)
+                decimalMarker = ',';
+            else
+                decimalMarker = '.';
 
             if (ich >= span.Length)
                 return false;
@@ -555,6 +587,12 @@ namespace Microsoft.ML.Internal.Utilities
                     break;
 
                 case '.':
+                    if (decimalMarker != '.') // Decimal marker was not '.', but we encountered a '.', which must be an error.
+                        return false; // Since this was an error, return false, which will later make the caller to set NaN as the out value.
+                    goto LPoint;
+                case ',':
+                    if (decimalMarker != ',') // Same logic as above.
+                        return false;
                     goto LPoint;
 
                 // The common cases.
@@ -571,7 +609,7 @@ namespace Microsoft.ML.Internal.Utilities
                     break;
             }
 
-            // Get digits before '.'
+            // Get digits before the decimal marker, which may be '.' or ','
             uint d;
             for (; ; )
             {
@@ -593,14 +631,14 @@ namespace Microsoft.ML.Internal.Utilities
             }
             Contracts.Assert(i < span.Length);
 
-            if (span[i] != '.')
+            if (span[i] != decimalMarker)
                 goto LAfterDigits;
 
-            LPoint:
+LPoint:
             Contracts.Assert(i < span.Length);
-            Contracts.Assert(span[i] == '.');
+            Contracts.Assert(span[i] == decimalMarker);
 
-            // Get the digits after '.'
+            // Get the digits after the decimal marker, which may be '.' or ','
             for (; ; )
             {
                 if (++i >= span.Length)
@@ -622,7 +660,7 @@ namespace Microsoft.ML.Internal.Utilities
                 }
             }
 
-        LAfterDigits:
+LAfterDigits:
             Contracts.Assert(i < span.Length);
             if (!digits)
                 return false;
@@ -694,7 +732,7 @@ namespace Microsoft.ML.Internal.Utilities
 
         // Map from base-10 exponent to 64-bit mantissa.
         // The approximation for 10^n is _mpe10man[n-1] * 2^(_mpe10e2[n-1]-64).
-        private static ulong[] _mpe10Man = new ulong[] {
+        private static readonly ulong[] _mpe10Man = new ulong[] {
             0xA000000000000000UL, 0xC800000000000000UL, 0xFA00000000000000UL, 0x9C40000000000000UL, 0xC350000000000000UL, /*005*/
             0xF424000000000000UL, 0x9896800000000000UL, 0xBEBC200000000000UL, 0xEE6B280000000000UL, 0x9502F90000000000UL, /*010*/
             0xBA43B74000000000UL, 0xE8D4A51000000000UL, 0x9184E72A00000000UL, 0xB5E620F480000000UL, 0xE35FA931A0000000UL, /*015*/
@@ -763,7 +801,7 @@ namespace Microsoft.ML.Internal.Utilities
 
         // Map from negative base-10 exponent to 64-bit mantissa. Note that the top bit of these is set.
         // The approximation for 10^-n is _mpne10man[n-1] * 2^(-_mpne10ne2[n-1]-64).
-        private static ulong[] _mpne10Man = new ulong[] {
+        private static readonly ulong[] _mpne10Man = new ulong[] {
             0xCCCCCCCCCCCCCCCDUL, 0xA3D70A3D70A3D70AUL, 0x83126E978D4FDF3BUL, 0xD1B71758E219652CUL, 0xA7C5AC471B478423UL, /*005*/
             0x8637BD05AF6C69B6UL, 0xD6BF94D5E57A42BCUL, 0xABCC77118461CEFDUL, 0x89705F4136B4A597UL, 0xDBE6FECEBDEDD5BFUL, /*010*/
             0xAFEBFF0BCB24AAFFUL, 0x8CBCCC096F5088CCUL, 0xE12E13424BB40E13UL, 0xB424DC35095CD80FUL, 0x901D7CF73AB0ACD9UL, /*015*/
@@ -840,7 +878,7 @@ namespace Microsoft.ML.Internal.Utilities
 
         // Map from base-10 exponent to base-2 exponent.
         // The approximation for 10^n is _mpe10man[n-1] * 2^(_mpe10e2[n-1]-64).
-        private static short[] _mpe10e2 = new short[] {
+        private static readonly short[] _mpe10e2 = new short[] {
                4,    7,   10,   14,   17,   20,   24,   27,   30,   34,   37,   40,   44,   47,   50,   54,   57,   60,   64,   67, /*020*/
               70,   74,   77,   80,   84,   87,   90,   94,   97,  100,  103,  107,  110,  113,  117,  120,  123,  127,  130,  133, /*040*/
              137,  140,  143,  147,  150,  153,  157,  160,  163,  167,  170,  173,  177,  180,  183,  187,  190,  193,  196,  200, /*060*/
@@ -911,7 +949,7 @@ namespace Microsoft.ML.Internal.Utilities
 
                 Double dbl = (Double)(ulong)man;
                 int e2 = _mpe10e2[i] + (0x3FF - 63);
-                Contracts.Assert(0 < e2 & e2 < 0x7FF);
+                Contracts.Assert(0 < e2 && e2 < 0x7FF);
                 ulong mul = (ulong)e2 << 52;
                 unsafe { dbl *= *(Double*)&mul; }
                 _mpe10Dbl[i] = dbl;
@@ -927,7 +965,7 @@ namespace Microsoft.ML.Internal.Utilities
             {
                 Double dbl = _mpne10Man[i];
                 int e2 = -_mpne10ne2[i] + (0x3FF - 64);
-                Contracts.Assert(0 < e2 & e2 < 0x7FF);
+                Contracts.Assert(0 < e2 && e2 < 0x7FF);
                 ulong mul = (ulong)e2 << 52;
                 unsafe { dbl *= *(Double*)&mul; }
                 _mpne10Dbl[i] = dbl;

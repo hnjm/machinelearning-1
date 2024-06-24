@@ -156,7 +156,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
         }
 
         // Factory method for SignatureLoadModel.
-        private static SsaChangePointDetector Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static SsaChangePointDetector Create(IHostEnvironment env, ModelLoadContext ctx)
         {
             Contracts.CheckValue(env, nameof(env));
             env.CheckValue(ctx, nameof(ctx));
@@ -165,7 +165,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
             return new SsaChangePointDetector(env, ctx);
         }
 
-        internal SsaChangePointDetector(IHostEnvironment env, ModelLoadContext ctx)
+        private SsaChangePointDetector(IHostEnvironment env, ModelLoadContext ctx)
             : base(env, ctx, LoaderSignature)
         {
             // *** Binary format ***
@@ -214,6 +214,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
     /// | Does this estimator need to look at the data to train its parameters? | Yes |
     /// | Input column data type | <xref:System.Single> |
     /// | Output column data type | 4-element vector of<xref:System.Double> |
+    /// | Exportable to ONNX | No |
     ///
     /// [!include[io](~/../docs/samples/docs/api-reference/time-series-props.md)]
     ///
@@ -225,7 +226,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
     /// ]]>
     /// </format>
     /// </remarks>
-    /// <seealso cref="Microsoft.ML.TimeSeriesCatalog.DetectChangePointBySsa(Microsoft.ML.TransformsCatalog,System.String,System.String,System.Int32,System.Int32,System.Int32,System.Int32,Microsoft.ML.Transforms.TimeSeries.ErrorFunction,Microsoft.ML.Transforms.TimeSeries.MartingaleType,System.Double)" />
+    /// <seealso cref="Microsoft.ML.TimeSeriesCatalog.DetectChangePointBySsa(Microsoft.ML.TransformsCatalog,System.String,System.String,System.Double,System.Int32,System.Int32,System.Int32,Microsoft.ML.Transforms.TimeSeries.ErrorFunction,Microsoft.ML.Transforms.TimeSeries.MartingaleType,System.Double)" />
     public sealed class SsaChangePointEstimator : IEstimator<SsaChangePointDetector>
     {
         private readonly IHost _host;
@@ -246,7 +247,7 @@ namespace Microsoft.ML.Transforms.TimeSeries
         /// <param name="martingale">The martingale used for scoring.</param>
         /// <param name="eps">The epsilon parameter for the Power martingale.</param>
         internal SsaChangePointEstimator(IHostEnvironment env, string outputColumnName,
-            int confidence,
+            double confidence,
             int changeHistoryLength,
             int trainingWindowSize,
             int seasonalityWindowSize,
@@ -255,17 +256,17 @@ namespace Microsoft.ML.Transforms.TimeSeries
             MartingaleType martingale = MartingaleType.Power,
             double eps = 0.1)
             : this(env, new SsaChangePointDetector.Options
-                {
-                    Name = outputColumnName,
-                    Source = inputColumnName ?? outputColumnName,
-                    Confidence = confidence,
-                    ChangeHistoryLength = changeHistoryLength,
-                    TrainingWindowSize = trainingWindowSize,
-                    SeasonalWindowSize = seasonalityWindowSize,
-                    Martingale = martingale,
-                    PowerMartingaleEpsilon = eps,
-                    ErrorFunction = errorFunction
-                })
+            {
+                Name = outputColumnName,
+                Source = inputColumnName ?? outputColumnName,
+                Confidence = confidence,
+                ChangeHistoryLength = changeHistoryLength,
+                TrainingWindowSize = trainingWindowSize,
+                SeasonalWindowSize = seasonalityWindowSize,
+                Martingale = martingale,
+                PowerMartingaleEpsilon = eps,
+                ErrorFunction = errorFunction
+            })
         {
         }
 

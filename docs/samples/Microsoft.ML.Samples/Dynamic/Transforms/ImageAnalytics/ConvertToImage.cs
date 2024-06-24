@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using Microsoft.ML;
 using Microsoft.ML.Data;
@@ -29,7 +28,7 @@ namespace Samples.Dynamic
             // consumable by ML.NET API.
             var data = mlContext.Data.LoadFromEnumerable(dataPoints);
 
-            // Image loading pipeline. 
+            // Image loading pipeline.
             var pipeline = mlContext.Transforms.ConvertToImage(imageHeight,
                 imageWidth, "Image", "Features")
                 .Append(mlContext.Transforms.ExtractPixels("Pixels", "Image"));
@@ -55,11 +54,11 @@ namespace Samples.Dynamic
                 .Schema))
             {
                 // Note that it is best to get the getters and values *before*
-                // iteration, so as to faciliate buffer sharing (if applicable), and
+                // iteration, so as to facilitate buffer sharing (if applicable), and
                 // column -type validation once, rather than many times.
                 VBuffer<float> features = default;
                 VBuffer<float> pixels = default;
-                Bitmap imageObject = null;
+                MLImage imageObject = null;
 
                 var featuresGetter = cursor.GetGetter<VBuffer<float>>(cursor.Schema[
                     "Features"]);
@@ -67,18 +66,18 @@ namespace Samples.Dynamic
                 var pixelsGetter = cursor.GetGetter<VBuffer<float>>(cursor.Schema[
                     "Pixels"]);
 
-                var imageGetter = cursor.GetGetter<Bitmap>(cursor.Schema["Image"]);
+                var imageGetter = cursor.GetGetter<MLImage>(cursor.Schema["Image"]);
                 while (cursor.MoveNext())
                 {
-                    
+
                     featuresGetter(ref features);
                     pixelsGetter(ref pixels);
                     imageGetter(ref imageObject);
 
                     Console.WriteLine("{0, -25} {1, -25} {2, -25}", string.Join(",",
-                        features.DenseValues().Take(5)) + "...", imageObject
-                        .PhysicalDimension, string.Join(",", pixels.DenseValues()
-                        .Take(5)) + "...");
+                        features.DenseValues().Take(5)) + "...",
+                        $"Width={imageObject.Width}, Height={imageObject.Height}",
+                        string.Join(",", pixels.DenseValues().Take(5)) + "...");
                 }
 
                 // Dispose the image.
@@ -98,8 +97,11 @@ namespace Samples.Dynamic
             var random = new Random(seed);
 
             for (int i = 0; i < count; i++)
-                yield return new DataPoint { Features = Enumerable.Repeat(0,
-                    inputSize).Select(x => (float)random.Next(0, 256)).ToArray() };
+                yield return new DataPoint
+                {
+                    Features = Enumerable.Repeat(0,
+                    inputSize).Select(x => (float)random.Next(0, 256)).ToArray()
+                };
         }
     }
 }

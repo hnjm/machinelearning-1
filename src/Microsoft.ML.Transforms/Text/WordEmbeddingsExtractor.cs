@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -88,11 +88,11 @@ namespace Microsoft.ML.Transforms.Text
 
         private readonly WordEmbeddingEstimator.PretrainedModelKind? _modelKind;
         private readonly string _modelFileNameWithPath;
-        private static object _embeddingsLock = new object();
+        private static readonly object _embeddingsLock = new object();
         private readonly bool _customLookup;
         private readonly int _linesToSkip;
         private readonly Model _currentVocab;
-        private static Dictionary<string, WeakReference<Model>> _vocab = new Dictionary<string, WeakReference<Model>>();
+        private static readonly Dictionary<string, WeakReference<Model>> _vocab = new Dictionary<string, WeakReference<Model>>();
 
         private sealed class Model
         {
@@ -414,6 +414,9 @@ namespace Microsoft.ML.Transforms.Text
                 //                                                   |
                 //                                               P [j * 3]
 
+                const int minimumOpSetVersion = 9;
+                ctx.CheckOpSetVersion(minimumOpSetVersion, LoaderSignature);
+
                 long[] axes = new long[] { 0 };
                 // Allocate D, a constant tensor representing word embedding weights.
                 var shapeD = new long[] { _parent._currentVocab.GetNumWords() + 3, _parent._currentVocab.Dimension };
@@ -599,7 +602,7 @@ namespace Microsoft.ML.Transforms.Text
             }
         }
 
-        private static Dictionary<WordEmbeddingEstimator.PretrainedModelKind, string> _modelsMetaData = new Dictionary<WordEmbeddingEstimator.PretrainedModelKind, string>()
+        private static readonly Dictionary<WordEmbeddingEstimator.PretrainedModelKind, string> _modelsMetaData = new Dictionary<WordEmbeddingEstimator.PretrainedModelKind, string>()
         {
              { WordEmbeddingEstimator.PretrainedModelKind.GloVe50D, "glove.6B.50d.txt" },
              { WordEmbeddingEstimator.PretrainedModelKind.GloVe100D, "glove.6B.100d.txt" },
@@ -613,7 +616,7 @@ namespace Microsoft.ML.Transforms.Text
              { WordEmbeddingEstimator.PretrainedModelKind.SentimentSpecificWordEmbedding, "sentiment.emd" }
         };
 
-        private static Dictionary<WordEmbeddingEstimator.PretrainedModelKind, int> _linesToSkipInModels = new Dictionary<WordEmbeddingEstimator.PretrainedModelKind, int>()
+        private static readonly Dictionary<WordEmbeddingEstimator.PretrainedModelKind, int> _linesToSkipInModels = new Dictionary<WordEmbeddingEstimator.PretrainedModelKind, int>()
             { { WordEmbeddingEstimator.PretrainedModelKind.FastTextWikipedia300D, 1 } };
 
         private string EnsureModelFile(IHostEnvironment env, out int linesToSkip, WordEmbeddingEstimator.PretrainedModelKind kind)
@@ -628,7 +631,7 @@ namespace Microsoft.ML.Transforms.Text
                 {
                     string dir = kind == WordEmbeddingEstimator.PretrainedModelKind.SentimentSpecificWordEmbedding ? Path.Combine("Text", "Sswe") : "WordVectors";
                     var url = $"{dir}/{modelFileName}";
-                    var ensureModel = ResourceManagerUtils.Instance.EnsureResource(Host, ch, url, modelFileName, dir, Timeout);
+                    var ensureModel = ResourceManagerUtils.Instance.EnsureResourceAsync(env, ch, url, modelFileName, dir, Timeout);
                     ensureModel.Wait();
                     var errorResult = ResourceManagerUtils.GetErrorMessage(out var errorMessage, ensureModel.Result);
                     if (errorResult != null)
@@ -736,6 +739,7 @@ namespace Microsoft.ML.Transforms.Text
     /// | Does this estimator need to look at the data to train its parameters? | No |
     /// | Input column data type | Vector of [Text](xref:Microsoft.ML.Data.TextDataViewType)  |
     /// | Output column data type | Known-sized vector of <xref:System.Single> |
+    /// | Exportable to ONNX | No |
     ///
     /// The <xref:Microsoft.ML.Transforms.Text.WordEmbeddingTransformer> produces a new column,
     /// named as specified in the output column name parameters, where each input vector is mapped to a numerical vector
@@ -782,12 +786,12 @@ namespace Microsoft.ML.Transforms.Text
         /// <summary>
         /// Extracts word embeddings.
         /// Output three times more values than dimension of the model specified in <paramref name="customModelFile"/>
-        /// First set of values represent minumum encountered values (for each dimension), second set represent average (for each dimension)
+        /// First set of values represent minimum encountered values (for each dimension), second set represent average (for each dimension)
         /// and third one represent maximum encountered values (for each dimension).
         /// </summary>
         /// <param name="env">The local instance of <see cref="IHostEnvironment"/></param>
         /// <param name="outputColumnName">Name of the column resulting from the transformation of <paramref name="inputColumnName"/>.</param>
-        /// <param name="customModelFile">The path of the pre-trained embeedings model to use. </param>
+        /// <param name="customModelFile">The path of the pre-trained embeddings model to use. </param>
         /// <param name="inputColumnName">Name of the column to transform. </param>
         internal WordEmbeddingEstimator(IHostEnvironment env, string outputColumnName, string customModelFile, string inputColumnName = null)
             : this(env, customModelFile, new ColumnOptions(outputColumnName, inputColumnName ?? outputColumnName))
@@ -797,12 +801,12 @@ namespace Microsoft.ML.Transforms.Text
         /// <summary>
         /// Extracts word embeddings.
         /// Output three times more values than dimension of the model specified in <paramref name="modelKind"/>
-        /// First set of values represent minumum encountered values (for each dimension), second set represent average (for each dimension)
+        /// First set of values represent minimum encountered values (for each dimension), second set represent average (for each dimension)
         /// and third one represent maximum encountered values (for each dimension).
         /// </summary>
         /// <param name="env">The local instance of <see cref="IHostEnvironment"/></param>
         /// <param name="modelKind">The embeddings <see cref="PretrainedModelKind"/> to use. </param>
-        /// <param name="columns">The array columns, and per-column configurations to extract embeedings from.</param>
+        /// <param name="columns">The array columns, and per-column configurations to extract embeddings from.</param>
         internal WordEmbeddingEstimator(IHostEnvironment env,
             PretrainedModelKind modelKind = PretrainedModelKind.SentimentSpecificWordEmbedding,
             params ColumnOptions[] columns)

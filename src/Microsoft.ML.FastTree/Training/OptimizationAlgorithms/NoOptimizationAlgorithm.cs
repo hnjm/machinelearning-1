@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 using Microsoft.ML.Runtime;
@@ -11,8 +11,8 @@ namespace Microsoft.ML.Trainers.FastTree
     /// </summary>
     internal class RandomForestOptimizer : GradientDescent
     {
-        private IGradientAdjuster _gradientWrapper;
-        // REVIEW: When the FastTree appliation is decoupled with tree learner and boosting logic, this class should be removed.
+        private readonly IGradientAdjuster _gradientWrapper;
+        // REVIEW: When the FastTree application is decoupled with tree learner and boosting logic, this class should be removed.
         internal RandomForestOptimizer(InternalTreeEnsemble ensemble, Dataset trainData, double[] initTrainScores, IGradientAdjuster gradientWrapper)
             : base(ensemble, trainData, initTrainScores, gradientWrapper)
         {

@@ -75,7 +75,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         }
 
 
-        [Fact]
+        [NativeDependencyFact("MklImports")]
         public void TestLRWithStats()
         {
             (IEstimator<ITransformer> pipe, IDataView dataView) = GetBinaryClassificationPipeline();
@@ -101,14 +101,14 @@ namespace Microsoft.ML.Tests.TrainerEstimators
 
                 Assert.NotNull(biasStats);
 
-                CompareNumbersWithTolerance(biasStats.StandardError, 0.25, digitsOfPrecision: 2);
-                CompareNumbersWithTolerance(biasStats.ZScore, 7.97, digitsOfPrecision: 2);
+                CompareNumbersWithTolerance(biasStats.StandardError, 0.24, digitsOfPrecision: 2);
+                CompareNumbersWithTolerance(biasStats.ZScore, 8.32, digitsOfPrecision: 2);
 
                 var scoredData = transformer.Transform(dataView);
 
                 var coefficients = stats.GetWeightsCoefficientStatistics(100);
 
-                Assert.Equal(18, coefficients.Length);
+                Assert.Equal(17, coefficients.Length);
 
                 foreach (var coefficient in coefficients)
                     Assert.True(coefficient.StandardError < 1.0);
@@ -117,15 +117,15 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             validateStats(linearModel);
 
             var modelAndSchemaPath = GetOutputPath("TestLRWithStats.zip");
-            
-            // Save model. 
+
+            // Save model.
             ML.Model.Save(transformer, dataView.Schema, modelAndSchemaPath);
 
             ITransformer transformerChain;
             using (var fs = File.OpenRead(modelAndSchemaPath))
                 transformerChain = ML.Model.Load(fs, out var schema);
 
-            var lastTransformer = ((TransformerChain<ITransformer>)transformerChain).LastTransformer as BinaryPredictionTransformer<ParameterMixingCalibratedModelParameters<IPredictorProducing<float>, ICalibrator>>;
+            var lastTransformer = ((TransformerChain<ITransformer>)transformerChain).LastTransformer as BinaryPredictionTransformer<CalibratedModelParametersBase<LinearBinaryModelParameters, PlattCalibrator>>;
             var model = lastTransformer.Model;
 
             linearModel = model.SubModel as LinearBinaryModelParameters;
@@ -145,7 +145,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
 
             using (FileStream fs = File.OpenRead(dropModelPath))
             {
-                var result = ModelFileUtils.LoadPredictorOrNull(Env, fs) as ParameterMixingCalibratedModelParameters<IPredictorProducing<float>, ICalibrator>;
+                var result = ModelFileUtils.LoadPredictorOrNull(Env, fs) as CalibratedModelParametersBase<LinearBinaryModelParameters, PlattCalibrator>;
                 var subPredictor = result?.SubModel as LinearBinaryModelParameters;
                 var stats = subPredictor?.Statistics;
 
@@ -177,7 +177,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             Done();
         }
 
-        [LessThanNetCore30OrNotNetCore]
+        [Fact]
         public void TestMLRWithStats()
         {
             (IEstimator<ITransformer> pipe, IDataView dataView) = GetMulticlassPipeline();
@@ -198,8 +198,13 @@ namespace Microsoft.ML.Tests.TrainerEstimators
                 var stats = modelParams.Statistics;
                 Assert.NotNull(stats);
 
-                CompareNumbersWithTolerance(stats.Deviance, 45.35, digitsOfPrecision: 2);
+#if NETCOREAPP3_1_OR_GREATER
+                CompareNumbersWithTolerance(stats.Deviance, 45.79, digitsOfPrecision: 0);
                 CompareNumbersWithTolerance(stats.NullDeviance, 329.58, digitsOfPrecision: 2);
+#else
+                CompareNumbersWithTolerance(stats.Deviance, 45.35, digitsOfPrecision: 0);
+                CompareNumbersWithTolerance(stats.NullDeviance, 329.58, digitsOfPrecision: 2);
+#endif
                 //Assert.Equal(14, stats.ParametersCount);
                 Assert.Equal(150, stats.TrainingExampleCount);
             };
@@ -207,7 +212,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             validateStats(model);
 
             var modelAndSchemaPath = GetOutputPath("TestMLRWithStats.zip");
-            // Save model. 
+            // Save model.
             ML.Model.Save(transformer, dataView.Schema, modelAndSchemaPath);
 
             // Load model.

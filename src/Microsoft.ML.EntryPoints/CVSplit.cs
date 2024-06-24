@@ -1,9 +1,10 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.ML;
 using Microsoft.ML.CommandLine;
+using Microsoft.ML.Data;
 using Microsoft.ML.EntryPoints;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.Transforms;
@@ -53,7 +54,7 @@ namespace Microsoft.ML.EntryPoints
 
             var data = input.Data;
 
-            var stratCol = SplitUtils.CreateStratificationColumn(host, ref data, input.StratificationColumn);
+            var splitCol = DataOperationsCatalog.CreateSplitColumn(env, ref data, input.StratificationColumn);
 
             int n = input.NumFolds;
             var output = new Output
@@ -67,12 +68,12 @@ namespace Microsoft.ML.EntryPoints
             for (int i = 0; i < n; i++)
             {
                 var trainData = new RangeFilter(host,
-                    new RangeFilter.Options { Column = stratCol, Min = i * fraction, Max = (i + 1) * fraction, Complement = true }, data);
-                output.TrainData[i] = ColumnSelectingTransformer.CreateDrop(host, trainData, stratCol);
+                    new RangeFilter.Options { Column = splitCol, Min = i * fraction, Max = (i + 1) * fraction, Complement = true }, data);
+                output.TrainData[i] = ColumnSelectingTransformer.CreateDrop(host, trainData, splitCol);
 
                 var testData = new RangeFilter(host,
-                    new RangeFilter.Options { Column = stratCol, Min = i * fraction, Max = (i + 1) * fraction, Complement = false }, data);
-                output.TestData[i] = ColumnSelectingTransformer.CreateDrop(host, testData, stratCol);
+                    new RangeFilter.Options { Column = splitCol, Min = i * fraction, Max = (i + 1) * fraction, Complement = false }, data);
+                output.TestData[i] = ColumnSelectingTransformer.CreateDrop(host, testData, splitCol);
             }
 
             return output;

@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Microsoft.ML.Data;
 using Microsoft.ML.Runtime;
 
@@ -11,10 +12,10 @@ namespace Microsoft.ML
 {
     /// <summary>
     /// The common context for all ML.NET operations. Once instantiated by the user, it provides a way to
-    /// create components for data preparation, feature enginering, training, prediction, model evaluation.
-    /// It also allows logging, execution control, and the ability set repeatable random numbers.
+    /// create components for data preparation, feature engineering, training, prediction, and model evaluation.
+    /// It also allows logging, execution control, and the ability to set repeatable random numbers.
     /// </summary>
-    public sealed class MLContext : IHostEnvironment
+    public sealed class MLContext : IHostEnvironmentInternal
     {
         // REVIEW: consider making LocalEnvironment and MLContext the same class instead of encapsulation.
         private readonly LocalEnvironment _env;
@@ -80,6 +81,33 @@ namespace Microsoft.ML
         public ComponentCatalog ComponentCatalog => _env.ComponentCatalog;
 
         /// <summary>
+        /// Gets or sets the location for the temp files created by ML.NET.
+        /// </summary>
+        public string TempFilePath
+        {
+            get { return _env.TempFilePath; }
+            set { _env.TempFilePath = value; }
+        }
+
+        /// <summary>
+        /// Allow falling back to run on CPU if couldn't run on GPU.
+        /// </summary>
+        public bool FallbackToCpu
+        {
+            get => _env.FallbackToCpu;
+            set { _env.FallbackToCpu = value; }
+        }
+
+        /// <summary>
+        /// GPU device ID to run execution on, <see langword="null" /> to run on CPU.
+        /// </summary>
+        public int? GpuDeviceId
+        {
+            get => _env.GpuDeviceId;
+            set { _env.GpuDeviceId = value; }
+        }
+
+        /// <summary>
         /// Create the ML context.
         /// </summary>
         /// <param name="seed">Seed for MLContext's random number generator. See the remarks for more details.</param>
@@ -131,9 +159,7 @@ namespace Microsoft.ML
             if (log == null)
                 return;
 
-            var msg = $"[Source={source.FullName}, Kind={message.Kind}] {message.Message}";
-
-            log(this, new LoggingEventArgs(msg));
+            log(this, new LoggingEventArgs(message.Message, message.Kind, source.FullName));
         }
 
         string IExceptionContext.ContextDescription => _env.ContextDescription;
@@ -142,8 +168,28 @@ namespace Microsoft.ML
         IChannel IChannelProvider.Start(string name) => _env.Start(name);
         IPipe<TMessage> IChannelProvider.StartPipe<TMessage>(string name) => _env.StartPipe<TMessage>(name);
         IProgressChannel IProgressChannelProvider.StartProgressChannel(string name) => _env.StartProgressChannel(name);
+        int? IHostEnvironmentInternal.Seed => _env.Seed;
 
         [BestFriend]
         internal void CancelExecution() => ((ICancelable)_env).CancelExecution();
+
+        [BestFriend]
+        internal static readonly bool OneDalDispatchingEnabled = InitializeOneDalDispatchingEnabled();
+
+        private static bool InitializeOneDalDispatchingEnabled()
+        {
+            try
+            {
+                var asm = Assembly.Load("Microsoft.ML.OneDal");
+                var type = asm.GetType("Microsoft.ML.OneDal.OneDalUtils");
+                var method = type.GetMethod("IsDispatchingEnabled", BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic);
+                var result = method.Invoke(null, null);
+                return (bool)result;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

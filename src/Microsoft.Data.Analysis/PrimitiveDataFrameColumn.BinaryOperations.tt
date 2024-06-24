@@ -1,0 +1,117 @@
+﻿<#@ template debug="false" hostspecific="false" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ output extension=".cs" #>
+<#@ include file="ColumnArithmeticTemplate.ttinclude" #>
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
+
+// Generated from PrimitiveDataFrameColumn.BinaryOperations.tt. Do not modify directly
+
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+
+namespace Microsoft.Data.Analysis
+{
+    public partial class PrimitiveDataFrameColumn<T> : DataFrameColumn
+        where T : unmanaged
+    {
+<# foreach (MethodConfiguration method in methodConfiguration) { #>
+<# if (method.MethodType == MethodType.Binary) {#>
+        /// <inheritdoc/>
+        public override DataFrameColumn <#=method.MethodName#>(DataFrameColumn column, bool inPlace = false)
+        {
+            switch (column)
+            {
+<# foreach (TypeConfiguration type in typeConfiguration) { #>
+                case PrimitiveDataFrameColumn<<#=type.TypeName#>> <#=type.TypeName#>Column:
+                    return HandleOperationImplementation(BinaryOperation.<#=method.MethodName#>, <#=type.TypeName#>Column, inPlace);
+<# } #>
+
+                default:
+                    throw new NotSupportedException();
+            }
+        }
+<# } #>
+<# if (method.MethodType == MethodType.Comparison) {#>
+
+        /// <inheritdoc/>
+        public override PrimitiveDataFrameColumn<bool> <#=method.MethodName#>(DataFrameColumn column)
+        {
+            switch (column)
+            {
+<# foreach (TypeConfiguration type in typeConfiguration) { #>
+                case PrimitiveDataFrameColumn<<#=type.TypeName#>> <#=type.TypeName#>Column:
+                    return HandleOperationImplementation(ComparisonOperation.<#=method.MethodName#>, <#=type.TypeName#>Column);
+<# } #>
+<# if (method.MethodName == "ElementwiseEquals") {#>
+                case null:
+                    return ElementwiseIsNull();
+<# } #>
+<# if (method.MethodName == "ElementwiseNotEquals") {#>
+                case null:
+                    return ElementwiseIsNotNull();
+<# } #>
+
+                default:
+                    throw new NotSupportedException();
+            }
+        }
+<# } #>
+<# if (method.MethodType == MethodType.BinaryScalar) {#>
+<# if (method.IsBitwise == true) { #>
+
+        /// <inheritdoc/>
+        public override PrimitiveDataFrameColumn<bool> <#=method.MethodName#>(bool value, bool inPlace = false)
+        {
+            return HandleBitwiseOperationImplementation(BinaryOperation.<#=method.MethodName#>, value, inPlace);
+        }
+<# } else { #>
+
+        /// <inheritdoc/>
+        public override DataFrameColumn <#=method.MethodName#><U>(U value, bool inPlace = false)
+        {
+            DataFrameColumn column = value as DataFrameColumn;
+            if (column != null)
+            {
+                return <#=method.MethodName#>(column, inPlace);
+            }
+            return HandleOperationImplementation(BinaryOperation.<#=method.MethodName#>, value, inPlace);
+        }
+
+        /// <inheritdoc/>
+        public override DataFrameColumn Reverse<#=method.MethodName#><U>(U value, bool inPlace = false)
+        {
+            return HandleReverseOperationImplementation(BinaryOperation.<#=method.MethodName#>, value, inPlace);
+        }
+<# } #>
+<# } #>
+<# if (method.MethodType == MethodType.ComparisonScalar) {#>
+
+        /// <inheritdoc/>
+        public override PrimitiveDataFrameColumn<bool> <#=method.MethodName#><U>(U value)
+        {
+            DataFrameColumn column = value as DataFrameColumn;
+            if (column != null)
+            {
+                return <#=method.MethodName#>(column);
+            }
+            return HandleOperationImplementation(ComparisonOperation.<#=method.MethodName#>, value);
+        }
+<# } #>
+<# if (method.MethodType == MethodType.BinaryInt ) {#>
+
+        /// <inheritdoc/>
+        public override DataFrameColumn <#=method.MethodName#>(int value, bool inPlace = false)
+        {
+            return HandleOperationImplementation(BinaryIntOperation.<#=method.MethodName#>, value, inPlace);
+        }
+<# } #>
+<# } #>
+
+    }
+}

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -14,7 +14,7 @@ namespace Microsoft.ML.Data
     /// A row-to-row mapper that is the result of a chained application of multiple mappers.
     /// </summary>
     [BestFriend]
-    internal sealed class CompositeRowToRowMapper : IRowToRowMapper
+    internal sealed class CompositeRowToRowMapper : IRowToRowMapper, IDisposable
     {
         [BestFriend]
         internal IRowToRowMapper[] InnerMappers { get; }
@@ -89,7 +89,7 @@ namespace Microsoft.ML.Data
         private sealed class SubsetActive : DataViewRow
         {
             private readonly DataViewRow _row;
-            private Func<int, bool> _pred;
+            private readonly Func<int, bool> _pred;
 
             public SubsetActive(DataViewRow row, Func<int, bool> pred)
             {
@@ -118,5 +118,20 @@ namespace Microsoft.ML.Data
             /// </summary>
             public override bool IsColumnActive(DataViewSchema.Column column) => _pred(column.Index);
         }
+
+        #region IDisposable Support
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            foreach (var mapper in InnerMappers)
+                (mapper as IDisposable)?.Dispose();
+
+            _disposed = true;
+        }
+        #endregion
     }
 }

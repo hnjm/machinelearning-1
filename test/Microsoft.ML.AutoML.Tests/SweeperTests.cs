@@ -1,16 +1,23 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Microsoft.ML.TestFramework;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.ML.AutoML.Test
 {
-    
-    public class SweeperTests
+
+    public class SweeperTests : BaseTestClass
     {
+        public SweeperTests(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         public void SmacQuickRunTest()
         {
@@ -20,16 +27,16 @@ namespace Microsoft.ML.AutoML.Test
             var floatLogValueGenerator = new FloatValueGenerator(new FloatParamArguments() { Name = "floatLog", Min = 1, Max = 1000, LogBase = true });
             var longValueGenerator = new LongValueGenerator(new LongParamArguments() { Name = "long", Min = 1, Max = 1000 });
             var longLogValueGenerator = new LongValueGenerator(new LongParamArguments() { Name = "longLog", Min = 1, Max = 1000, LogBase = true });
-            var discreteValueGeneator = new DiscreteValueGenerator(new DiscreteParamArguments() { Name = "discrete", Values = new[] { "200", "400", "600", "800" } });
+            var discreteValueGenerator = new DiscreteValueGenerator(new DiscreteParamArguments() { Name = "discrete", Values = new[] { "200", "400", "600", "800" } });
 
-            var sweeper = new SmacSweeper(new MLContext(), new SmacSweeper.Arguments()
+            var sweeper = new SmacSweeper(new MLContext(1), new SmacSweeper.Arguments()
             {
                 SweptParameters = new IValueGenerator[] {
                     floatValueGenerator,
                     floatLogValueGenerator,
                     longValueGenerator,
                     longLogValueGenerator,
-                    discreteValueGeneator
+                    discreteValueGenerator
                 },
                 NumberInitialPopulation = numInitialPopulation
             });
@@ -39,7 +46,7 @@ namespace Microsoft.ML.AutoML.Test
             Assert.NotNull(floatLogValueGenerator[0].ValueText);
             Assert.NotNull(longValueGenerator[0].ValueText);
             Assert.NotNull(longLogValueGenerator[0].ValueText);
-            Assert.NotNull(discreteValueGeneator[0].ValueText);
+            Assert.NotNull(discreteValueGenerator[0].ValueText);
 
             List<RunResult> results = new List<RunResult>();
 
@@ -79,7 +86,7 @@ namespace Microsoft.ML.AutoML.Test
         [Fact(Skip = "This test is too slow to run as part of automation.")]
         public void Smac4ParamsConvergenceTest()
         {
-            var sweeper = new SmacSweeper(new MLContext(), new SmacSweeper.Arguments()
+            var sweeper = new SmacSweeper(new MLContext(1), new SmacSweeper.Arguments()
             {
                 SweptParameters = new INumericValueGenerator[] {
                     new FloatValueGenerator(new FloatParamArguments() { Name = "x1", Min = 1, Max = 1000}),
@@ -88,7 +95,7 @@ namespace Microsoft.ML.AutoML.Test
                     new FloatValueGenerator(new FloatParamArguments() { Name = "x4", Min = 1, Max = 1000}),
                 },
             });
-            
+
             List<RunResult> results = new List<RunResult>();
 
             RunResult bestResult = null;
@@ -132,7 +139,7 @@ namespace Microsoft.ML.AutoML.Test
         [Fact(Skip = "This test is too slow to run as part of automation.")]
         public void Smac2ParamsConvergenceTest()
         {
-            var sweeper = new SmacSweeper(new MLContext(), new SmacSweeper.Arguments()
+            var sweeper = new SmacSweeper(new MLContext(1), new SmacSweeper.Arguments()
             {
                 SweptParameters = new INumericValueGenerator[] {
                     new FloatValueGenerator(new FloatParamArguments() { Name = "foo", Min = 1, Max = 5}),
@@ -147,7 +154,7 @@ namespace Microsoft.ML.AutoML.Test
             while (true)
             {
                 ParameterSet[] pars = sweeper.ProposeSweeps(1, results);
-                if(pars == null)
+                if (pars == null)
                 {
                     break;
                 }
@@ -165,6 +172,111 @@ namespace Microsoft.ML.AutoML.Test
                     Console.WriteLine("{0}--{1}--{2}--{3}", count, foo, bar, metric);
                 }
             }
+        }
+
+        [Fact]
+        public void TestLongParameterValue()
+        {
+            LongParameterValue value1 = new LongParameterValue(nameof(value1), 1);
+            LongParameterValue value2 = new LongParameterValue(nameof(value2), 2);
+            LongParameterValue duplicateValue1 = new LongParameterValue(nameof(value1), 1);
+
+            Assert.False(value1.Equals(value2));
+            Assert.True(value1.Equals(value1));
+            Assert.True(value1.Equals(duplicateValue1));
+            Assert.False(value1.Equals((object)value2));
+            Assert.True(value1.Equals((object)value1));
+            Assert.True(value1.Equals((object)duplicateValue1));
+
+            Assert.False(value1.Equals(new FloatParameterValue(nameof(value1), 1.0f)));
+            Assert.False(value1.Equals((IParameterValue)null));
+            Assert.False(value1.Equals((object)null));
+            Assert.False(value1.Equals(new object()));
+
+            Assert.Equal(value1.GetHashCode(), value1.GetHashCode());
+            Assert.Equal(value1.GetHashCode(), duplicateValue1.GetHashCode());
+        }
+
+        [Fact]
+        public void TestFloatParameterValue()
+        {
+            FloatParameterValue value1 = new FloatParameterValue(nameof(value1), 1.0f);
+            FloatParameterValue value2 = new FloatParameterValue(nameof(value2), 2.0f);
+            FloatParameterValue duplicateValue1 = new FloatParameterValue(nameof(value1), 1.0f);
+
+            Assert.False(value1.Equals(value2));
+            Assert.True(value1.Equals(value1));
+            Assert.True(value1.Equals(duplicateValue1));
+            Assert.False(value1.Equals((object)value2));
+            Assert.True(value1.Equals((object)value1));
+            Assert.True(value1.Equals((object)duplicateValue1));
+
+            Assert.False(value1.Equals(new LongParameterValue(nameof(value1), 1)));
+            Assert.False(value1.Equals((IParameterValue)null));
+            Assert.False(value1.Equals((object)null));
+            Assert.False(value1.Equals(new object()));
+
+            Assert.Equal(value1.GetHashCode(), value1.GetHashCode());
+            Assert.Equal(value1.GetHashCode(), duplicateValue1.GetHashCode());
+        }
+
+        [Fact]
+        public void TestStringParameterValue()
+        {
+            StringParameterValue value1 = new StringParameterValue(nameof(value1), "1");
+            StringParameterValue value2 = new StringParameterValue(nameof(value2), "2");
+            StringParameterValue duplicateValue1 = new StringParameterValue(nameof(value1), "1");
+
+            Assert.False(value1.Equals(value2));
+            Assert.True(value1.Equals(value1));
+            Assert.True(value1.Equals(duplicateValue1));
+            Assert.False(value1.Equals((object)value2));
+            Assert.True(value1.Equals((object)value1));
+            Assert.True(value1.Equals((object)duplicateValue1));
+
+            Assert.False(value1.Equals(new LongParameterValue(nameof(value1), 1)));
+            Assert.False(value1.Equals((IParameterValue)null));
+            Assert.False(value1.Equals((object)null));
+            Assert.False(value1.Equals(new object()));
+
+            Assert.Equal(value1.GetHashCode(), value1.GetHashCode());
+            Assert.Equal(value1.GetHashCode(), duplicateValue1.GetHashCode());
+        }
+
+        [Fact]
+        public void TestParameterSetEquality()
+        {
+            LongParameterValue value1 = new LongParameterValue(nameof(value1), 1);
+            LongParameterValue value2 = new LongParameterValue(nameof(value2), 2);
+            StringParameterValue stringValue1 = new StringParameterValue(nameof(value1), "1");
+
+            var parameterSet = new ParameterSet(new[] { value1 });
+            Assert.False(parameterSet.Equals(null));
+
+            // Verify Equals for sets with different hash codes
+            var parameterSetNewHash = new ParameterSet(new IParameterValue[] { value1 }.ToDictionary(x => x.Name), hash: parameterSet.GetHashCode() + 1);
+            Assert.NotEqual(parameterSet.GetHashCode(), parameterSetNewHash.GetHashCode());
+            Assert.False(parameterSet.Equals(parameterSetNewHash));
+
+            // Verify Equals for sets with the same hash code, but different number of values
+            var parameterSetMoreValues = new ParameterSet(new IParameterValue[] { value1, value2 }.ToDictionary(x => x.Name), hash: parameterSet.GetHashCode());
+            Assert.Equal(parameterSet.GetHashCode(), parameterSetMoreValues.GetHashCode());
+            Assert.False(parameterSet.Equals(parameterSetMoreValues));
+
+            // Verify Equals for sets with the same hash and item counts, but one of the items has a different name
+            var parameterSetDifferentName = new ParameterSet(new IParameterValue[] { value2 }.ToDictionary(x => x.Name), hash: parameterSet.GetHashCode());
+            Assert.Equal(parameterSet.GetHashCode(), parameterSetDifferentName.GetHashCode());
+            Assert.False(parameterSet.Equals(parameterSetDifferentName));
+
+            // Verify Equals for sets with the same hash and item names, but one of the items has a different value
+            var parameterSetDifferentValue = new ParameterSet(new IParameterValue[] { stringValue1 }.ToDictionary(x => x.Name), hash: parameterSet.GetHashCode());
+            Assert.Equal(parameterSet.GetHashCode(), parameterSetDifferentValue.GetHashCode());
+            Assert.False(parameterSet.Equals(parameterSetDifferentValue));
+
+            // Verify Equals for sets with the same hash and items
+            var parameterSetSameHash = new ParameterSet(new IParameterValue[] { value1 }.ToDictionary(x => x.Name), hash: parameterSet.GetHashCode());
+            Assert.Equal(parameterSet.GetHashCode(), parameterSetSameHash.GetHashCode());
+            Assert.True(parameterSet.Equals(parameterSetSameHash));
         }
     }
 }

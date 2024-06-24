@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -466,6 +466,23 @@ namespace Microsoft.ML.RunTests
         }
 
         /// <summary>
+        /// Run one command loading the datafile loaded as defined by a model file, and comparing
+        /// against standard output. This utility method will both load and save a model.
+        /// </summary>
+        /// <param name="ctx">The run context from which we can generate our output paths</param>
+        /// <param name="cmdName">The loadname of the <see cref="ICommand"/></param>
+        /// <param name="dataPath">The path to the input data</param>
+        /// <param name="modelPath">The model to load</param>
+        /// <param name="extraArgs">Arguments passed to the command</param>
+        /// <param name="toCompare">Extra output paths to compare to baseline, besides the
+        /// stdout</param>
+        /// <returns>Whether this test succeeded.</returns>
+        protected bool TestInOutCore(RunContextBase ctx, string cmdName, string dataPath, OutputPath modelPath, string extraArgs, int digitsOfPrecision = DigitsOfPrecision, NumberParseOption parseOption = NumberParseOption.Default, params PathArgument[] toCompare)
+        {
+            return TestCoreCore(ctx, cmdName, dataPath, PathArgument.Usage.Both, modelPath, ctx.ModelPath(), null, extraArgs, digitsOfPrecision, parseOption, toCompare);
+        }
+
+        /// <summary>
         /// Run two commands, one with the loader arguments, the second with the loader loaded
         /// from the data model, ensuring that stdout is the same compared to baseline in both cases.
         /// </summary>
@@ -667,9 +684,14 @@ namespace Microsoft.ML.RunTests
         {
             return TestInOutCore(Params, cmdName, dataPath, modelPath, extraArgs, toCompare);
         }
+
+        protected bool TestInOutCore(string cmdName, string dataPath, OutputPath modelPath, string extraArgs, int digitsOfPrecision = DigitsOfPrecision, params PathArgument[] toCompare)
+        {
+            return TestInOutCore(Params, cmdName, dataPath, modelPath, extraArgs, digitsOfPrecision, NumberParseOption.Default, toCompare);
+        }
     }
 
-    // REVIEW: This class doesn't really belong in a file called TestCommandBase. 
+    // REVIEW: This class doesn't really belong in a file called TestCommandBase.
     //                 And the name of this class isn't real suggestive or accurate.
     public sealed partial class TestDmCommand : TestSteppedDmCommandBase
     {
@@ -712,9 +734,9 @@ namespace Microsoft.ML.RunTests
                 string.Format(
                     @"train data={{{0}}}
                      loader=Text{{
-                        header=+ 
-                        col=NumFeatures:Num:9-14 
-                        col=CatFeaturesText:TX:0~* 
+                        header=+
+                        col=NumFeatures:Num:9-14
+                        col=CatFeaturesText:TX:0~*
                         col=Label:Num:0}}
                     xf=Categorical{{col=CatFeatures:CatFeaturesText}}
                     xf=Concat{{col=Features:NumFeatures,CatFeatures}}
@@ -868,7 +890,7 @@ namespace Microsoft.ML.RunTests
             Done();
         }
 
-        [X64Fact("x86 output differs from Baseline")]
+        [Fact]
         public void CommandCrossValidationKeyLabelWithFloatKeyValues()
         {
             RunMTAThread(() =>
@@ -880,6 +902,16 @@ namespace Microsoft.ML.RunTests
                 string loaderArgs = "loader=text{col=Features:R4:10-14 col=Label:R4:9 col=GroupId:TX:1 header+}";
                 TestCore("cv", pathData, loaderArgs, extraArgs);
             });
+            Done();
+        }
+
+        [Fact]
+        public void CommandCrossValidationWithTextStratificationColumn()
+        {
+            string pathData = GetDataPath(@"adult.tiny.with-schema.txt");
+            string extraArgs = $"tr=lr{{{TestLearnersBase.logisticRegression.Trainer.SubComponentSettings}}} strat=Strat threads- norm=Warn";
+            string loaderArgs = "loader=text{col=Features:R4:9-14 col=Label:R4:0 col=Strat:TX:1 header+}";
+            TestCore("cv", pathData, loaderArgs, extraArgs, 5);
             Done();
         }
 
@@ -948,12 +980,12 @@ namespace Microsoft.ML.RunTests
             Done();
         }
 
-        // Purpose of this test is to validate what our code correctly handle situation with 
+        // Purpose of this test is to validate what our code correctly handle situation with
         // multiple different FastTree (Ranking and Classification for example) instances in different threads.
         // FastTree internally fails if we try to run it simultaneously and if this happens we wouldn't get model file for training.
         [TestCategory(Cat)]
         [Fact]
-        public void CommandTrainFastTreeInDifferentThreads()
+        public async void CommandTrainFastTreeInDifferentThreads()
         {
             var dataPath = GetDataPath(TestDatasets.adult.testFilename);
             var firstModelOutPath = DeleteOutputPath("TreeTransform-model2.zip");
@@ -969,10 +1001,11 @@ namespace Microsoft.ML.RunTests
             t[1] = new Task<int>(() => MainForTest(secondTrainArgs));
             t[0].Start();
             t[1].Start();
-            Task.WaitAll(t);
+            var t0 = await t[0];
+            var t1 = await t[1];
 
-            Assert.Equal(0, t[0].Result);
-            Assert.Equal(0, t[1].Result);
+            Assert.Equal(0, t0);
+            Assert.Equal(0, t1);
         }
 
         [TestCategory(Cat), TestCategory("FastTree")]
@@ -1200,7 +1233,7 @@ namespace Microsoft.ML.RunTests
             Done();
         }
 
-        [LessThanNetCore30OrNotNetCoreFact("netcoreapp3.0 output differs from Baseline")]
+        [Fact]
         [TestCategory(Cat), TestCategory("Multiclass"), TestCategory("Logistic Regression")]
         public void CommandTrainMlrWithStats()
         {
@@ -1209,7 +1242,7 @@ namespace Microsoft.ML.RunTests
             string pathTrain = GetDataPath("iris.data");
             OutputPath trainModel = ModelPath();
             const string trainArgs = "tr=MultiClassLogisticRegression{maxiter=100 t=- stat=+} xf=Term{col=Label} seed=1";
-            TestCore("train", pathTrain, loaderCmdline, trainArgs);
+            TestCore("train", pathTrain, loaderCmdline, trainArgs, 4);
 
             _step++;
             // Save model summary.
@@ -1376,7 +1409,7 @@ namespace Microsoft.ML.RunTests
         [Fact(Skip = "Need CoreTLC specific baseline update")]
         public void CommandDefaultLearners()
         {
-            string pathData = GetDataPath("breast-cancer.txt");
+            string pathData = GetDataPath(TestDatasets.breastCancer.trainFilename);
             TestCore("train", pathData, "", "seed=1 norm=Warn");
 
             _step++;
@@ -1517,7 +1550,7 @@ namespace Microsoft.ML.RunTests
         public void CommandTrainScoreEvaluateUncalibratedBinary()
         {
             // First run a training.
-            string pathData = GetDataPath("breast-cancer.txt");
+            string pathData = GetDataPath(TestDatasets.breastCancer.trainFilename);
             OutputPath trainModel = ModelPath();
             TestCore("train", pathData, "loader=TextLoader xf[norm]=MinMax{col=Features}", "tr=ap{shuf=-} cali={}");
 
@@ -1707,7 +1740,7 @@ namespace Microsoft.ML.RunTests
         }
 
         [TestCategory(Cat), TestCategory("FastForest")]
-        [Fact]
+        [Fact(Skip = "Temporarily skipping while Intel/AMD difference is resolved. Tracked in issue #5845")]
         public void CommandTrainScoreEvaluateQuantileRegression()
         {
             RunMTAThread(() =>
@@ -1760,7 +1793,7 @@ namespace Microsoft.ML.RunTests
             Done();
         }
 
-        [TestCategory(Cat), TestCategory("Dracula")]
+        [TestCategory(Cat), TestCategory("CountTargetEncoding")]
         [Fact(Skip = "Need CoreTLC specific baseline update")]
         public void CommandDraculaInfer()
         {
@@ -1968,34 +2001,34 @@ namespace Microsoft.ML.RunTests
         }
 
         [TestCategory(Cat), TestCategory("FieldAwareFactorizationMachine"), TestCategory("Continued Training")]
-        [Fact]
+        [FieldAwareFactorizationMachineFact]
         public void CommandTrainingBinaryFactorizationMachineWithInitialization()
         {
             const string loaderArgs = "loader=text{col=Label:0 col=Features:1-*}";
             const string extraArgs = "xf=minmax{col=Features} tr=ffm{d=7 shuf- iters=3 norm-}";
-            string data = GetDataPath("breast-cancer.txt");
+            string data = GetDataPath(TestDatasets.breastCancer.trainFilename);
             OutputPath model = ModelPath();
 
-            TestCore("traintest", data, loaderArgs, extraArgs + " test=" + data);
+            TestCore("traintest", data, loaderArgs, extraArgs + " test=" + data, 6);
 
             _step++;
-            TestInOutCore("traintest", data, model, extraArgs + " " + loaderArgs + " " + "cont+" + " " + "test=" + data);
+            TestInOutCore("traintest", data, model, extraArgs + " " + loaderArgs + " " + "cont+" + " " + "test=" + data, 6);
             Done();
         }
 
         [TestCategory(Cat), TestCategory("FieldAwareFactorizationMachine"), TestCategory("Continued Training")]
-        [Fact]
+        [FieldAwareFactorizationMachineFact]
         public void CommandTrainingBinaryFieldAwareFactorizationMachineWithInitialization()
         {
             const string loaderArgs = "loader=text{col=Label:0 col=FieldA:1-2 col=FieldB:3-4 col=FieldC:5-6 col=FieldD:7-9}";
             const string extraArgs = "tr=ffm{d=7 shuf- iters=3} col[Feature]=FieldA col[Feature]=FieldB col[Feature]=FieldC col[Feature]=FieldD";
-            string data = GetDataPath("breast-cancer.txt");
+            string data = GetDataPath(TestDatasets.breastCancer.trainFilename);
             OutputPath model = ModelPath();
 
             TestCore("traintest", data, loaderArgs, extraArgs + " test=" + data, digitsOfPrecision: 5);
 
             _step++;
-            TestInOutCore("traintest", data, model, extraArgs + " " + loaderArgs + " " + "cont+" + " " + "test=" + data);
+            TestInOutCore("traintest", data, model, extraArgs + " " + loaderArgs + " " + "cont+" + " " + "test=" + data, 6);
             Done();
         }
 
@@ -2019,7 +2052,7 @@ namespace Microsoft.ML.RunTests
             }
 
             // see https://github.com/dotnet/machinelearning/issues/404
-            // in Linux, the clang sqrt() results vary highly from the ones in mac and Windows. 
+            // in Linux, the clang sqrt() results vary highly from the ones in mac and Windows.
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 Assert.True(outputPath.CheckEqualityNormalized(digitsOfPrecision: 4));
             else
@@ -2053,15 +2086,15 @@ namespace Microsoft.ML.RunTests
         }
 
         [TestCategory(Cat), TestCategory("FieldAwareFactorizationMachine"), TestCategory("Continued Training")]
-        [Fact]
+        [Fact(Skip = "Temporarily skipping while Intel/AMD difference is resolved. Tracked in issue #5845")]
         public void CommandTrainingBinaryFactorizationMachineWithValidationAndInitialization()
         {
             const string loaderArgs = "loader=text{col=Label:0 col=Features:1-*}";
             const string extraArgs = "xf=minmax{col=Features} tr=ffm{d=5 shuf- iters=2 norm-}";
-            string data = GetDataPath("breast-cancer.txt");
+            string data = GetDataPath(TestDatasets.breastCancer.trainFilename);
             OutputPath model = ModelPath();
 
-            TestCore("traintest", data, loaderArgs, extraArgs + " test=" + data);
+            TestCore("traintest", data, loaderArgs, extraArgs + " test=" + data, 6);
 
             _step++;
             OutputPath outputPath = StdoutPath();
@@ -2083,15 +2116,15 @@ namespace Microsoft.ML.RunTests
         }
 
         [TestCategory(Cat), TestCategory("FieldAwareFactorizationMachine"), TestCategory("Continued Training")]
-        [Fact]
+        [Fact(Skip = "Temporarily skipping while Intel/AMD difference is resolved. Tracked in issue #5845")]
         public void CommandTrainingBinaryFieldAwareFactorizationMachineWithValidationAndInitialization()
         {
             const string loaderArgs = "loader=text{col=Label:0 col=FieldA:1-2 col=FieldB:3-4 col=FieldC:5-6 col=FieldD:7-9}";
             const string extraArgs = "tr=ffm{d=5 shuf- iters=2} col[Feature]=FieldA col[Feature]=FieldB col[Feature]=FieldC col[Feature]=FieldD";
-            string data = GetDataPath("breast-cancer.txt");
+            string data = GetDataPath(TestDatasets.breastCancer.trainFilename);
             OutputPath model = ModelPath();
 
-            TestCore("traintest", data, loaderArgs, extraArgs + " test=" + data);
+            TestCore("traintest", data, loaderArgs, extraArgs + " test=" + data, 6);
 
             _step++;
             OutputPath outputPath = StdoutPath();
@@ -2142,6 +2175,43 @@ namespace Microsoft.ML.RunTests
 
         [TestCategory("DataPipeSerialization")]
         [Fact()]
+        public void SavePipeTextLoaderWithMultilines()
+        {
+            string dataPath = GetDataPath("multiline-escapechar.csv");
+            const string loaderArgs = "loader=text{sep=, quote+ multilines+ header+ escapechar=\\ col=id:Num:0 col=description:TX:1 col=animal:TX:2}";
+
+            OutputPath modelPath = ModelPath();
+            string extraArgs = null;
+            TestCore("showdata", dataPath, loaderArgs, extraArgs);
+
+            _step++;
+
+            TestCore("showdata", dataPath, string.Format("in={{{0}}}", modelPath.Path), "");
+            Done();
+        }
+
+        [TestCategory("DataPipeSerialization")]
+        [Fact()]
+        public void SavePipeTextLoaderWithMissingRealsAsNaNs()
+        {
+            string dataPath = GetDataPath("missing_fields.csv");
+            const string loaderArgs = "loader=text{sep=, quote+ multilines+ header+ escapechar=\\ missingrealnan+ " +
+                "col=id:Num:0 col=description:TX:1 col=date:DT:4 " +
+                "col=sing1:R4:2 col=sing2:R4:3 col=singFt1:R4:2-3 " +
+                "col=doubFt:R8:2-3,5-6}";
+
+            OutputPath modelPath = ModelPath();
+            string extraArgs = null;
+            TestCore("showdata", dataPath, loaderArgs, extraArgs);
+
+            _step++;
+
+            TestCore("showdata", dataPath, string.Format("in={{{0}}}", modelPath.Path), "");
+            Done();
+        }
+
+        [TestCategory("DataPipeSerialization")]
+        [Fact()]
         public void SavePipeChooseColumnsByIndexDrop()
         {
             string dataPath = GetDataPath("adult.tiny.with-schema.txt");
@@ -2155,6 +2225,76 @@ namespace Microsoft.ML.RunTests
             _step++;
 
             TestCore("showdata", dataPath, string.Format("in={{{0}}}", modelPath.Path), "");
+            Done();
+        }
+
+        [Fact]
+        public void CommandShowDataSvmLight()
+        {
+            // Test with a specified size parameter. The "6" feature should be omitted.
+            // Also the blank and completely fully commented lines should be omitted,
+            // and the feature 2:3 that appears in the comment should not appear.
+            var path = CreateOutputPath("DataA.txt");
+            File.WriteAllLines(path.Path, new string[] {
+                "1\t1:3\t4:6",
+                "  -1 cost:5\t2:4 \t4:7\t6:-1   ",
+                "",
+                "1\t5:-2 # A comment! 2:3",
+                "# What a nice full line comment",
+                "1 cost:0.5\t2:3.14159",
+            });
+            var pathA = path.Path;
+            const string chooseXf = " xf=select{keepcol=Label keepcol=Weight keepcol=GroupId keepcol=Comment keepcol=Features}";
+            TestReloadedCore("showdata", path.Path, "loader=svm{size=5}" + chooseXf, "", "");
+
+            // Test with autodetermined sizes. The the "6" feature should be included,
+            // and the feature vector should have length 6.
+            _step++;
+            TestCore("showdata", path.Path, "loader=svm" + chooseXf, "");
+
+            // Test with a term mapping, instead of the actual SVM^light format that
+            // requires positive integers. ALso check that qid works here.
+            _step++;
+            var modelPath = ModelPath();
+            path = CreateOutputPath("DataB.txt");
+            File.WriteAllLines(path.Path, new string[] {
+                "1 qid:1 aurora:3.14159 beachwood:123",
+                "-1 qid:5 beachwood:345 chagrin:-21",
+            });
+            TestReloadedCore("showdata", path.Path, "loader=svm{indices=names}" + chooseXf, "", "");
+
+            // We reload the model, but on a new set of data. The "euclid" key should be
+            // ignored as it would not have been detected by the term transform.
+            _step++;
+            path = CreateOutputPath("DataC.txt");
+            File.WriteAllLines(path.Path, new string[] {
+                "-1 aurora:1 chagrin:2",
+                "1 chagrin:3 euclid:4"
+            });
+            TestInCore("showdata", path.Path, modelPath, "");
+
+            _step++;
+            path = CreateOutputPath("DataD.txt");
+            File.WriteAllLines(path.Path, new string[] { "1 aurora:2 :3" });
+            TestReloadedCore("showdata", path.Path, "loader=svm{indices=names}" + chooseXf, "", "");
+
+            _step++;
+
+            // If we specify the size parameter, and zero-based feature indices, both indices 5 and 6 should
+            // not appear.
+            TestReloadedCore("showdata", pathA, "loader=svm{size=5 indices=zerobased}" + chooseXf, "", "");
+
+            Done();
+        }
+
+        [Fact]
+        public void CommandSaveDataSvmLight()
+        {
+            string pathData = GetDataPath("breast-cancer-withheader.txt");
+            OutputPath dataPath = CreateOutputPath("data.txt");
+            TestReloadedCore("savedata", pathData, "loader=text{header+}", "saver=svmlight{b+}", null, dataPath.Arg("dout"));
+            dataPath = CreateOutputPath("data-0.txt");
+            TestReloadedCore("savedata", pathData, "loader=text{header+}", "saver=svmlight{zero+}", null, dataPath.Arg("dout"));
             Done();
         }
     }

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -47,7 +47,7 @@ namespace Microsoft.ML.Data
                 ident = true;
                 conv = null;
             }
-            else if (!Conversions.Instance.TryGetStandardConversion(typeOrig, typeSrc, out conv, out ident))
+            else if (!Conversions.DefaultInstance.TryGetStandardConversion(typeOrig, typeSrc, out conv, out ident))
             {
                 throw env.ExceptParam(nameof(predicate),
                     "The type of column '{0}', '{1}', cannot be converted to the input type of the predicate '{2}'",
@@ -87,8 +87,8 @@ namespace Microsoft.ML.Data
                 : base(env, name, input)
             {
                 Host.AssertValue(pred);
-                Host.Assert(conv != null | typeof(T1) == typeof(T2));
-                Host.Assert(0 <= colSrc & colSrc < Source.Schema.Count);
+                Host.Assert(conv != null || typeof(T1) == typeof(T2));
+                Host.Assert(0 <= colSrc && colSrc < Source.Schema.Count);
 
                 _colSrc = colSrc;
                 _pred = pred;

@@ -1,8 +1,9 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using Microsoft.ML;
@@ -135,7 +136,7 @@ namespace Microsoft.ML.Transforms
 
         protected override DataViewType GetColumnTypeCore(int iinfo)
         {
-            Contracts.Assert(0 <= iinfo & iinfo < Infos.Length);
+            Contracts.Assert(0 <= iinfo && iinfo < Infos.Length);
             return NumberDataViewType.Single;
         }
 
@@ -223,7 +224,8 @@ namespace Microsoft.ML.Transforms
             {
                 ValueGetter<VBuffer<TValue>> getter = _getter as ValueGetter<VBuffer<TValue>>;
                 if (getter == null)
-                    throw Ch.Except("Invalid TValue: '{0}'", typeof(TValue));
+                    throw Ch.Except($"Invalid TValue: '{typeof(TValue)}', " +
+                            $"expected type: '{_getter.GetType().GetGenericArguments().First().GetGenericArguments().First()}'.");
                 return getter;
             }
         }

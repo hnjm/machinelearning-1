@@ -19,14 +19,13 @@ namespace Microsoft.ML.Trainers.LightGbm
         private readonly bool _hasValid;
         private readonly bool _hasMetric;
 
-        public IntPtr Handle { get; private set; }
+        public WrappedLightGbmInterface.SafeBoosterHandle Handle { get; private set; }
         public int BestIteration { get; set; }
 
         public Booster(Dictionary<string, object> parameters, Dataset trainset, Dataset validset = null)
         {
             var param = LightGbmInterfaceUtils.JoinParameters(parameters);
-            var handle = IntPtr.Zero;
-            LightGbmInterfaceUtils.Check(WrappedLightGbmInterface.BoosterCreate(trainset.Handle, param, ref handle));
+            LightGbmInterfaceUtils.Check(WrappedLightGbmInterface.BoosterCreate(trainset.Handle, param, out var handle));
             Handle = handle;
             if (validset != null)
             {
@@ -81,14 +80,14 @@ namespace Microsoft.ML.Trainers.LightGbm
             byte[] buffer = new byte[bufLen];
             int size = 0;
             fixed (byte* ptr = buffer)
-                LightGbmInterfaceUtils.Check(WrappedLightGbmInterface.BoosterSaveModelToString(Handle, 0, BestIteration, bufLen, ref size, ptr));
+                LightGbmInterfaceUtils.Check(WrappedLightGbmInterface.BoosterSaveModelToString(Handle, 0, BestIteration, 0, bufLen, ref size, ptr));
             // If buffer size is not enough, reallocate buffer and get again.
             if (size > bufLen)
             {
                 bufLen = size;
                 buffer = new byte[bufLen];
                 fixed (byte* ptr = buffer)
-                    LightGbmInterfaceUtils.Check(WrappedLightGbmInterface.BoosterSaveModelToString(Handle, 0, BestIteration, bufLen, ref size, ptr));
+                    LightGbmInterfaceUtils.Check(WrappedLightGbmInterface.BoosterSaveModelToString(Handle, 0, BestIteration, 0, bufLen, ref size, ptr));
             }
             byte[] content = new byte[size];
             Array.Copy(buffer, content, size);
@@ -180,17 +179,51 @@ namespace Microsoft.ML.Trainers.LightGbm
                 for (int k = 0; k < 32; ++k)
                 {
                     int cat = (j - lowerBound) * 32 + k;
-                    if (FindInBitset(catThreshold, lowerBound, upperBound, cat) && cat > 0)
+                    if (FindInBitset(catThreshold, lowerBound, upperBound, cat))
                         cats.Add(cat);
                 }
             }
             return cats.ToArray();
         }
 
-        public InternalTreeEnsemble GetModel(int[] categoricalFeatureBoudaries)
+        public static int GetNumFeatures(string modelString)
+        {
+            string[] lines = modelString.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            // Jump to the "max_feature_idx" value in the file. It's at the beginning.
+            int i = 0;
+            while (!lines[i].StartsWith("max_feature_idx"))
+                i++;
+
+            // Stored 0 based in the file, need the actual count so adding 1.
+            return int.Parse(lines[i].Split('=')[1]) + 1;
+        }
+
+        public static Dictionary<string, string> GetParameters(string modelString)
+        {
+            Dictionary<string, string> parameters = new Dictionary<string, string>();
+            string[] lines = modelString.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // Jump to the parameters section in the file. It's at the very end.
+            int i = 0;
+            while (!lines[i].StartsWith("parameters"))
+                i++;
+
+            // Increment once more to get to the first parameter
+            i++;
+
+            while (i <= lines.Length && !lines[i].StartsWith("end of parameters"))
+            {
+                var param = lines[i].Substring(1, lines[i].Length - 2).Split(':');
+                parameters[param[0]] = param[1].Trim();
+                i++;
+            }
+
+            return parameters;
+        }
+
+        public static InternalTreeEnsemble GetModel(int[] categoricalFeatureBoundaries, string modelString)
         {
             InternalTreeEnsemble res = new InternalTreeEnsemble();
-            string modelString = GetModelString();
             string[] lines = modelString.Split('\n');
             int i = 0;
             for (; i < lines.Length;)
@@ -220,11 +253,11 @@ namespace Microsoft.ML.Trainers.LightGbm
                         var defaultValue = GetDefalutValue(threshold, decisionType);
                         var categoricalSplitFeatures = new int[numberOfLeaves - 1][];
                         var categoricalSplit = new bool[numberOfLeaves - 1];
-                        if (categoricalFeatureBoudaries != null)
+                        if (categoricalFeatureBoundaries != null)
                         {
                             // Add offsets to split features.
                             for (int node = 0; node < numberOfLeaves - 1; ++node)
-                                splitFeature[node] = categoricalFeatureBoudaries[splitFeature[node]];
+                                splitFeature[node] = categoricalFeatureBoundaries[splitFeature[node]];
                         }
 
                         if (numCat > 0)
@@ -240,7 +273,7 @@ namespace Microsoft.ML.Trainers.LightGbm
                                     categoricalSplitFeatures[node] = new int[cats.Length];
                                     // Convert Cat thresholds to feature indices.
                                     for (int j = 0; j < cats.Length; ++j)
-                                        categoricalSplitFeatures[node][j] = splitFeature[node] + cats[j] - 1;
+                                        categoricalSplitFeatures[node][j] = splitFeature[node] + cats[j];
 
                                     splitFeature[node] = -1;
                                     categoricalSplit[node] = true;
@@ -284,9 +317,8 @@ namespace Microsoft.ML.Trainers.LightGbm
         #region IDisposable Support
         public void Dispose()
         {
-            if (Handle != IntPtr.Zero)
-                LightGbmInterfaceUtils.Check(WrappedLightGbmInterface.BoosterFree(Handle));
-            Handle = IntPtr.Zero;
+            Handle?.Dispose();
+            Handle = null;
         }
         #endregion
     }

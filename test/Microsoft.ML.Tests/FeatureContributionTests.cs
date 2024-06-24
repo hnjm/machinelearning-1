@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -10,7 +10,9 @@ using Microsoft.ML.Data.IO;
 using Microsoft.ML.Internal.Utilities;
 using Microsoft.ML.RunTests;
 using Microsoft.ML.TestFramework.Attributes;
+using Microsoft.ML.TestFrameworkCommon.Attributes;
 using Microsoft.ML.Trainers;
+using Microsoft.ML.Trainers.LightGbm;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -22,7 +24,7 @@ namespace Microsoft.ML.Tests
         {
         }
 
-        [Fact]
+        [NativeDependencyFact("MklImports")]
         public void FeatureContributionEstimatorWorkout()
         {
             var data = GetSparseDataset();
@@ -39,7 +41,7 @@ namespace Microsoft.ML.Tests
         }
 
         // Tests for regression trainers that implement IFeatureContributionMapper interface.
-        [Fact]
+        [NativeDependencyFact("MklImports")]
         public void TestOrdinaryLeastSquaresRegression()
         {
             TestFeatureContribution(ML.Regression.Trainers.Ols(), GetSparseDataset(numberOfInstances: 100), "LeastSquaresRegression");
@@ -49,6 +51,12 @@ namespace Microsoft.ML.Tests
         public void TestLightGbmRegression()
         {
             TestFeatureContribution(ML.Regression.Trainers.LightGbm(), GetSparseDataset(numberOfInstances: 100), "LightGbmRegression");
+        }
+
+        [LightGBMFact]
+        public void TestLightGbmRegressionWithCategoricalSplit()
+        {
+            TestFeatureContribution(ML.Regression.Trainers.LightGbm(new LightGbmRegressionTrainer.Options() { UseCategoricalSplit = true }), GetOneHotEncodedData(numberOfInstances: 100), "LightGbmRegressionWithCategoricalSplit");
         }
 
         [Fact]
@@ -163,7 +171,7 @@ namespace Microsoft.ML.Tests
                 GetSparseDataset(TaskType.BinaryClassification, 100), "SGDBinary");
         }
 
-        [Fact]
+        [NativeDependencyFact("MklImports")]
         public void TestSSGDBinary()
         {
             TestFeatureContribution(ML.BinaryClassification.Trainers.SymbolicSgdLogisticRegression(
@@ -240,8 +248,8 @@ namespace Microsoft.ML.Tests
         }
 
         /// <summary>
-        /// Features: x1, x2vBuff(sparce vector), x3. 
-        /// y = 10x1 + 10x2vBuff + 30x3 + e.
+        /// Features: x1, x2vBuff(sparse vector), x3. 
+        /// y = 10x1 + 10x2vBuff + 20x3 + e.
         /// Within xBuff feature  2nd slot will be sparse most of the time.
         /// 2nd slot of xBuff has the least importance: Evaluation metrics do not change a lot when this slot is permuted.
         /// x3 has the biggest importance.
@@ -250,9 +258,9 @@ namespace Microsoft.ML.Tests
         {
             // Setup synthetic dataset.
             var rand = new Random(10);
-            float[] yArray = new float[numberOfInstances],
-                x1Array = new float[numberOfInstances],
-                x3Array = new float[numberOfInstances];
+            float[] yArray = new float[numberOfInstances];
+            float[] x1Array = new float[numberOfInstances];
+            float[] x3Array = new float[numberOfInstances];
 
             VBuffer<float>[] vbArray = new VBuffer<float>[numberOfInstances];
 
@@ -375,6 +383,56 @@ namespace Microsoft.ML.Tests
             MulticlassClassification,
             Ranking,
             Clustering
+        }
+
+        public class TaxiTrip
+        {
+            [LoadColumn(0)]
+            public string VendorId;
+
+            [LoadColumn(1)]
+            public float RateCode;
+
+            [LoadColumn(2)]
+            public float PassengerCount;
+
+            [LoadColumn(3)]
+            public float TripTime;
+
+            [LoadColumn(4)]
+            public float TripDistance;
+
+            [LoadColumn(5)]
+            public string PaymentType;
+
+            [LoadColumn(6)]
+            public float FareAmount;
+        }
+
+        /// <summary>
+        /// Returns a DataView with a Features column which include HotEncodedData
+        /// </summary>
+        private IDataView GetOneHotEncodedData(int numberOfInstances = 100)
+        {
+            var trainDataPath = GetDataPath("taxi-fare-train.csv");
+            IDataView trainingDataView = ML.Data.LoadFromTextFile<TaxiTrip>(trainDataPath, hasHeader: true, separatorChar: ',');
+
+            var vendorIdEncoded = "VendorIdEncoded";
+            var rateCodeEncoded = "RateCodeEncoded";
+            var paymentTypeEncoded = "PaymentTypeEncoded";
+
+            var dataProcessPipeline = ML.Transforms.CopyColumns(outputColumnName: DefaultColumnNames.Label, inputColumnName: nameof(TaxiTrip.FareAmount))
+                                     .Append(ML.Transforms.Categorical.OneHotEncoding(outputColumnName: vendorIdEncoded, inputColumnName: nameof(TaxiTrip.VendorId)))
+                                     .Append(ML.Transforms.Categorical.OneHotEncoding(outputColumnName: rateCodeEncoded, inputColumnName: nameof(TaxiTrip.RateCode)))
+                                     .Append(ML.Transforms.Categorical.OneHotEncoding(outputColumnName: paymentTypeEncoded, inputColumnName: nameof(TaxiTrip.PaymentType)))
+                                     .Append(ML.Transforms.NormalizeMeanVariance(outputColumnName: nameof(TaxiTrip.PassengerCount)))
+                                     .Append(ML.Transforms.NormalizeMeanVariance(outputColumnName: nameof(TaxiTrip.TripTime)))
+                                     .Append(ML.Transforms.NormalizeMeanVariance(outputColumnName: nameof(TaxiTrip.TripDistance)))
+                                     .Append(ML.Transforms.Concatenate(DefaultColumnNames.Features, vendorIdEncoded, rateCodeEncoded, paymentTypeEncoded,
+                                        nameof(TaxiTrip.PassengerCount), nameof(TaxiTrip.TripTime), nameof(TaxiTrip.TripDistance)));
+
+            var someRows = ML.Data.TakeRows(trainingDataView, numberOfInstances);
+            return dataProcessPipeline.Fit(someRows).Transform(someRows);
         }
     }
 }

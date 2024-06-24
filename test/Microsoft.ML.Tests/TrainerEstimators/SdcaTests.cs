@@ -4,6 +4,8 @@
 
 using System.Linq;
 using Microsoft.ML.Data;
+using Microsoft.ML.RunTests;
+using Microsoft.ML.TestFrameworkCommon;
 using Microsoft.ML.Trainers;
 using Xunit;
 
@@ -14,7 +16,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
         [Fact]
         public void SdcaWorkout()
         {
-            var dataPath = GetDataPath("breast-cancer.txt");
+            var dataPath = GetDataPath(TestDatasets.breastCancer.trainFilename);
 
             var data = ML.Data.LoadFromTextFile(dataPath, new[] {
                 new TextLoader.Column("Label", DataKind.Single, 0),
@@ -59,7 +61,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
 
             // Create a new context for ML.NET operations. It can be used for exception tracking and logging,
             // as a catalog of available operations and as the source of randomness.
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
 
             // Step 1: Read the data as an IDataView.
             var data = mlContext.Data.LoadFromEnumerable(rawData);
@@ -127,10 +129,10 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             // Verify the metrics produced are different.
             var metrics1 = mlContext.BinaryClassification.Evaluate(prediction1);
             var metrics2 = mlContext.BinaryClassification.Evaluate(prediction2);
-            Assert.Equal(0.9658, metrics1.AreaUnderRocCurve, 4);
-            Assert.Equal(0.3488, metrics1.LogLoss, 4);
-            Assert.Equal(0.9596, metrics2.AreaUnderRocCurve, 4);
-            Assert.Equal(0.3591, metrics2.LogLoss, 4);
+            Assert.Equal(0.9658, metrics1.AreaUnderRocCurve, 0.0001);
+            Assert.Equal(0.3488, metrics1.LogLoss, 0.0001);
+            Assert.Equal(0.9596, metrics2.AreaUnderRocCurve, 0.0001);
+            Assert.Equal(0.3591, metrics2.LogLoss, 0.0001);
 
             // Verify the raw scores are different.
             var scores1 = prediction1.GetColumn<float>(prediction1.Schema["Score"]).ToArray();
@@ -140,13 +142,15 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             bool sameScores = true;
             for (int i = 0; i < scores1.Length; i++)
             {
-                if(!CompareNumbersWithTolerance(scores1[i], scores2[i]))
+                if (!CompareNumbersWithTolerance(scores1[i], scores2[i], logFailure: false))
                 {
                     sameScores = false;
                     break;
                 }
             }
             Assert.False(sameScores);
+
+            Done();
         }
 
         [Fact]
@@ -184,10 +188,10 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             // Verify the metrics produced are different.
             var metrics1 = mlContext.MulticlassClassification.Evaluate(prediction1, labelColumnName: "LabelIndex", topKPredictionCount: 1);
             var metrics2 = mlContext.MulticlassClassification.Evaluate(prediction2, labelColumnName: "LabelIndex", topKPredictionCount: 1);
-            Assert.Equal(0.9100, metrics1.TopKAccuracy, 4);
-            Assert.Equal(0.2411, metrics1.LogLoss, 4);
-            Assert.Equal(0.8800, metrics2.TopKAccuracy, 4);
-            Assert.Equal(0.2464, metrics2.LogLoss, 4);
+            Assert.Equal(0.9100, metrics1.TopKAccuracy, 0.0001);
+            Assert.Equal(0.2411, metrics1.LogLoss, 0.0001);
+            Assert.Equal(0.8800, metrics2.TopKAccuracy, 0.0001);
+            Assert.Equal(0.2464, metrics2.LogLoss, 0.0001);
 
             // Verify the raw scores are different.
             var scores1 = prediction1.GetColumn<float[]>(prediction1.Schema["Score"]).ToArray();
@@ -197,13 +201,15 @@ namespace Microsoft.ML.Tests.TrainerEstimators
             bool sameScores = true;
             for (int i = 0; i < scores1.Length; i++)
             {
-                if (!CompareNumbersWithTolerance(scores1[i][0], scores2[i][0]))
+                if (!CompareNumbersWithTolerance(scores1[i][0], scores2[i][0], logFailure: false))
                 {
                     sameScores = false;
                     break;
                 }
             }
             Assert.False(sameScores);
+
+            Done();
         }
 
         [Fact]
@@ -214,7 +220,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
 
             // Create a new context for ML.NET operations. It can be used for exception tracking and logging,
             // as a catalog of available operations and as the source of randomness.
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
 
             // Step 1: Read the data as an IDataView.
             var data = mlContext.Data.LoadFromEnumerable(rawData);
@@ -256,7 +262,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
 
             // Create a new context for ML.NET operations. It can be used for exception tracking and logging,
             // as a catalog of available operations and as the source of randomness.
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
 
             // Step 1: Read the data as an IDataView.
             var data = mlContext.Data.LoadFromEnumerable(rawData);
@@ -291,7 +297,7 @@ namespace Microsoft.ML.Tests.TrainerEstimators
 
             // Create a new context for ML.NET operations. It can be used for exception tracking and logging,
             // as a catalog of available operations and as the source of randomness.
-            var mlContext = new MLContext();
+            var mlContext = new MLContext(1);
 
             // Step 1: Read the data as an IDataView.
             var data = mlContext.Data.LoadFromEnumerable(rawData);

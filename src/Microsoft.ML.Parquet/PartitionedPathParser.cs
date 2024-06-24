@@ -98,8 +98,8 @@ namespace Microsoft.ML.Data
                 loaderAssemblyName: typeof(SimplePartitionedPathParser).Assembly.FullName);
         }
 
-        private IHost _host;
-        private PartitionedFileLoader.Column[] _columns;
+        private readonly IHost _host;
+        private readonly PartitionedFileLoader.Column[] _columns;
 
         public SimplePartitionedPathParser(IHostEnvironment env, Arguments args)
         {
@@ -209,7 +209,7 @@ namespace Microsoft.ML.Data
         public const string LoadName = "ParquetPathParser";
         public const string ShortName = "ParqPP";
 
-        private IHost _host;
+        private readonly IHost _host;
         private PartitionedFileLoader.Column[] _columns;
 
         private static VersionInfo GetVersionInfo()
@@ -278,7 +278,7 @@ namespace Microsoft.ML.Data
                 sb.Clear();
                 _host.Check(col.TryUnparse(sb));
                 ctx.SaveString(sb.ToString());
-            };
+            }
         }
         public IEnumerable<PartitionedFileLoader.Column> ParseColumns(string path)
         {
@@ -362,7 +362,7 @@ namespace Microsoft.ML.Data
         /// <param name="dir">The directory name.</param>
         /// <param name="name">The resulting name.</param>
         /// <param name="value">The resulting value.</param>
-        /// <returns>true if the parsing was successfull.</returns>
+        /// <returns>true if the parsing was successful.</returns>
         private static bool TryParseNameValueFromDir(string dir, out string name, out string value)
         {
             const char nameValueSeparator = '=';

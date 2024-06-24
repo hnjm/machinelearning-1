@@ -34,6 +34,15 @@ namespace Microsoft.ML.AutoML
             return GetBestRun(results, metricsAgent, metricInfo.IsMaximizing);
         }
 
+        public static RunDetail<RankingMetrics> GetBestRun(IEnumerable<RunDetail<RankingMetrics>> results,
+            RankingMetric metric, uint dcgTruncationLevel)
+        {
+            var metricsAgent = new RankingMetricsAgent(null, metric, dcgTruncationLevel);
+
+            var metricInfo = new OptimizingMetricInfo(metric);
+            return GetBestRun(results, metricsAgent, metricInfo.IsMaximizing);
+        }
+
         public static RunDetail<TMetrics> GetBestRun<TMetrics>(IEnumerable<RunDetail<TMetrics>> results,
             IMetricsAgent<TMetrics> metricsAgent, bool isMetricMaximizing)
         {
@@ -41,6 +50,9 @@ namespace Microsoft.ML.AutoML
             if (!results.Any()) { return null; }
             var scores = results.Select(r => metricsAgent.GetScore(r.ValidationMetrics));
             var indexOfBestScore = GetIndexOfBestScore(scores, isMetricMaximizing);
+            // indexOfBestScore will be -1 if the optimization metric for all models is NaN.
+            // In this case, return the first model.
+            indexOfBestScore = indexOfBestScore != -1 ? indexOfBestScore : 0;
             return results.ElementAt(indexOfBestScore);
         }
 
@@ -51,6 +63,9 @@ namespace Microsoft.ML.AutoML
             if (!results.Any()) { return null; }
             var scores = results.Select(r => r.Results.Average(x => metricsAgent.GetScore(x.ValidationMetrics)));
             var indexOfBestScore = GetIndexOfBestScore(scores, isMetricMaximizing);
+            // indexOfBestScore will be -1 if the optimization metric for all models is NaN.
+            // In this case, return the first model.
+            indexOfBestScore = indexOfBestScore != -1 ? indexOfBestScore : 0;
             return results.ElementAt(indexOfBestScore);
         }
 
@@ -79,6 +94,30 @@ namespace Microsoft.ML.AutoML
         public static int GetIndexOfBestScore(IEnumerable<double> scores, bool isMetricMaximizing)
         {
             return isMetricMaximizing ? GetIndexOfMaxScore(scores) : GetIndexOfMinScore(scores);
+        }
+
+        public static RunDetail<TMetrics> ToRunDetail<TMetrics>(MLContext context, TrialResult<TMetrics> result, SweepablePipeline pipeline)
+            where TMetrics : class
+        {
+            var parameter = result.TrialSettings.Parameter;
+            var trainerName = pipeline.ToString(parameter);
+            var modelContainer = new ModelContainer(context, result.Model);
+            var detail = new RunDetail<TMetrics>(trainerName, result.Pipeline, null, modelContainer, result.Metrics, result.Exception);
+            detail.RuntimeInSeconds = result.DurationInMilliseconds / 1000;
+
+            return detail;
+        }
+
+        public static CrossValidationRunDetail<TMetrics> ToCrossValidationRunDetail<TMetrics>(MLContext context, TrialResult<TMetrics> result, SweepablePipeline pipeline)
+            where TMetrics : class
+        {
+            var parameter = result.TrialSettings.Parameter;
+            var trainerName = pipeline.ToString(parameter);
+            var crossValidationResult = result.CrossValidationMetrics.Select(m => new TrainResult<TMetrics>(new ModelContainer(context, m.Model), m.Metrics, result.Exception));
+            var detail = new CrossValidationRunDetail<TMetrics>(trainerName, result.Pipeline, null, crossValidationResult);
+            detail.RuntimeInSeconds = result.DurationInMilliseconds / 1000;
+
+            return detail;
         }
 
         private static int GetIndexOfMinScore(IEnumerable<double> scores)

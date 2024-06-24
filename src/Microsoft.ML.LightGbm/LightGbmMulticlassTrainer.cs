@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Microsoft.ML;
 using Microsoft.ML.Calibrators;
@@ -38,6 +39,7 @@ namespace Microsoft.ML.Trainers.LightGbm
     /// | Is normalization required? | No |
     /// | Is caching required? | No |
     /// | Required NuGet in addition to Microsoft.ML | Microsoft.ML.LightGbm |
+    /// | Exportable to ONNX | Yes |
     ///
     /// [!include[algorithm](~/../docs/samples/docs/api-reference/algo-details-lightgbm.md)]
     /// ]]>
@@ -57,8 +59,13 @@ namespace Microsoft.ML.Trainers.LightGbm
         private const int _minDataToUseSoftmax = 50000;
 
         private const double _maxNumClass = 1e6;
-        private int _numClass;
-        private int _tlcNumClass;
+
+        // If there are NaN labels, they are converted to be equal to _numberOfClassesIncludingNan - 1.
+        // This is done because NaN labels are going to be seen as an extra different class, when training the model in the WrappedLightGbmTraining class
+        // But, when creating the Predictors, only _numberOfClasses is considered, ignoring the "extra class" of NaN labels.
+        private int _numberOfClassesIncludingNan;
+        private int _numberOfClasses;
+
         private protected override PredictionKind PredictionKind => PredictionKind.MulticlassClassification;
 
         /// <summary>
@@ -128,7 +135,7 @@ namespace Microsoft.ML.Trainers.LightGbm
              : base(env, LoadNameValue, options, TrainerUtils.MakeU4ScalarColumn(options.LabelColumnName))
         {
             Contracts.CheckUserArg(options.Sigmoid > 0, nameof(Options.Sigmoid), "must be > 0.");
-            _numClass = -1;
+            _numberOfClassesIncludingNan = -1;
         }
 
         /// <summary>
@@ -153,21 +160,41 @@ namespace Microsoft.ML.Trainers.LightGbm
             : this(env,
                   new Options()
                   {
-                    LabelColumnName = labelColumnName,
-                    FeatureColumnName = featureColumnName,
-                    ExampleWeightColumnName = exampleWeightColumnName,
-                    NumberOfLeaves = numberOfLeaves,
-                    MinimumExampleCountPerLeaf = minimumExampleCountPerLeaf,
-                    LearningRate = learningRate,
-                    NumberOfIterations = numberOfIterations
+                      LabelColumnName = labelColumnName,
+                      FeatureColumnName = featureColumnName,
+                      ExampleWeightColumnName = exampleWeightColumnName,
+                      NumberOfLeaves = numberOfLeaves,
+                      MinimumExampleCountPerLeaf = minimumExampleCountPerLeaf,
+                      LearningRate = learningRate,
+                      NumberOfIterations = numberOfIterations
                   })
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="LightGbmRankingTrainer"/>
+        /// </summary>
+        /// <param name="env">The private instance of <see cref="IHostEnvironment"/>.</param>
+        /// <param name="lightGbmModel"> A pre-trained <see cref="System.IO.Stream"/> of a LightGBM model file inferencing</param>
+        /// <param name="featureColumnName">The name of the feature column.</param>
+        internal LightGbmMulticlassTrainer(IHostEnvironment env,
+            Stream lightGbmModel,
+            string featureColumnName = DefaultColumnNames.Features)
+            : base(env,
+                  LoadNameValue,
+                  new Options()
+                  {
+                      FeatureColumnName = featureColumnName,
+                      LightGbmModel = lightGbmModel
+                  },
+                  new SchemaShape.Column())
         {
         }
 
         private InternalTreeEnsemble GetBinaryEnsemble(int classID)
         {
             var res = new InternalTreeEnsemble();
-            for (int i = classID; i < TrainedEnsemble.NumTrees; i += _numClass)
+            for (int i = classID; i < TrainedEnsemble.NumTrees; i += _numberOfClassesIncludingNan)
             {
                 // Ignore dummy trees.
                 if (TrainedEnsemble.GetTreeAt(i).NumLeaves > 1)
@@ -185,12 +212,12 @@ namespace Microsoft.ML.Trainers.LightGbm
         {
             Host.Check(TrainedEnsemble != null, "The predictor cannot be created before training is complete.");
 
-            Host.Assert(_numClass > 1, "Must know the number of classes before creating a predictor.");
-            Host.Assert(TrainedEnsemble.NumTrees % _numClass == 0, "Number of trees should be a multiple of number of classes.");
+            Host.Assert(_numberOfClassesIncludingNan > 1, "Must know the number of classes before creating a predictor.");
+            Host.Assert(TrainedEnsemble.NumTrees % _numberOfClassesIncludingNan == 0, "Number of trees should be a multiple of number of classes.");
 
             var innerArgs = LightGbmInterfaceUtils.JoinParameters(GbmOptions);
-            IPredictorProducing<float>[] predictors = new IPredictorProducing<float>[_tlcNumClass];
-            for (int i = 0; i < _tlcNumClass; ++i)
+            IPredictorProducing<float>[] predictors = new IPredictorProducing<float>[_numberOfClasses];
+            for (int i = 0; i < _numberOfClasses; ++i)
             {
                 var pred = CreateBinaryPredictor(i, innerArgs);
                 var cali = new PlattCalibrator(Host, -LightGbmTrainerOptions.Sigmoid, 0);
@@ -207,18 +234,44 @@ namespace Microsoft.ML.Trainers.LightGbm
         {
             Host.AssertValue(ch);
             base.CheckDataValid(ch, data);
-            var labelType = data.Schema.Label.Value.Type;
-            if (!(labelType is BooleanDataViewType || labelType is KeyDataViewType || labelType == NumberDataViewType.Single))
+            // If using a pre-trained model file we don't need a label or group column
+            if (LightGbmTrainerOptions.LightGbmModel == null)
             {
-                throw ch.ExceptParam(nameof(data),
-                    $"Label column '{data.Schema.Label.Value.Name}' is of type '{labelType.RawType}', but must be of unsigned int, boolean or float.");
+                var labelType = data.Schema.Label.Value.Type;
+                if (!(labelType is BooleanDataViewType || labelType is KeyDataViewType || labelType == NumberDataViewType.Single))
+                {
+                    throw ch.ExceptParam(nameof(data),
+                        $"Label column '{data.Schema.Label.Value.Name}' is of type '{labelType.RawType}', but must be of unsigned int, boolean or float.");
+                }
             }
         }
+
+        private protected override void InitializeBeforeTraining()
+        {
+            _numberOfClassesIncludingNan = -1;
+            _numberOfClasses = 0;
+        }
+
+        private protected override void AdditionalLoadPreTrainedModel(string modelText)
+        {
+            string[] lines = modelText.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            // Jump to the "objective" value in the file. It's at the beginning.
+            int i = 0;
+            while (!lines[i].StartsWith("objective"))
+                i++;
+
+            // Format in the file is objective=multiclass num_class:4
+            var split = lines[i].Split(' ');
+            _numberOfClassesIncludingNan = int.Parse(split[1].Split(':')[1]);
+            _numberOfClasses = _numberOfClassesIncludingNan;
+        }
+
 
         private protected override void ConvertNaNLabels(IChannel ch, RoleMappedData data, float[] labels)
         {
             // Only initialize one time.
-            if (_numClass < 0)
+
+            if (_numberOfClassesIncludingNan < 0)
             {
                 float minLabel = float.MaxValue;
                 float maxLabel = float.MinValue;
@@ -240,21 +293,22 @@ namespace Microsoft.ML.Trainers.LightGbm
                 if (data.Schema.Label.Value.Type is KeyDataViewType keyType)
                 {
                     if (hasNaNLabel)
-                        _numClass = keyType.GetCountAsInt32(Host) + 1;
+                        _numberOfClassesIncludingNan = keyType.GetCountAsInt32(Host) + 1;
                     else
-                        _numClass = keyType.GetCountAsInt32(Host);
-                    _tlcNumClass = keyType.GetCountAsInt32(Host);
+                        _numberOfClassesIncludingNan = keyType.GetCountAsInt32(Host);
+                    _numberOfClasses = keyType.GetCountAsInt32(Host);
                 }
                 else
                 {
                     if (hasNaNLabel)
-                        _numClass = (int)maxLabel + 2;
+                        _numberOfClassesIncludingNan = (int)maxLabel + 2;
                     else
-                        _numClass = (int)maxLabel + 1;
-                    _tlcNumClass = (int)maxLabel + 1;
+                        _numberOfClassesIncludingNan = (int)maxLabel + 1;
+                    _numberOfClasses = (int)maxLabel + 1;
                 }
             }
-            float defaultLabel = _numClass - 1;
+
+            float defaultLabel = _numberOfClassesIncludingNan - 1;
             for (int i = 0; i < labels.Length; ++i)
                 if (float.IsNaN(labels[i]))
                     labels[i] = defaultLabel;
@@ -264,7 +318,7 @@ namespace Microsoft.ML.Trainers.LightGbm
         {
             base.GetDefaultParameters(ch, numRow, hasCategorical, totalCats, true);
             int numberOfLeaves = (int)GbmOptions["num_leaves"];
-            int minimumExampleCountPerLeaf = LightGbmTrainerOptions.MinimumExampleCountPerLeaf ?? DefaultMinDataPerLeaf(numRow, numberOfLeaves, _numClass);
+            int minimumExampleCountPerLeaf = LightGbmTrainerOptions.MinimumExampleCountPerLeaf ?? DefaultMinDataPerLeaf(numRow, numberOfLeaves, _numberOfClassesIncludingNan);
             GbmOptions["min_data_per_leaf"] = minimumExampleCountPerLeaf;
             if (!hiddenMsg)
             {
@@ -281,8 +335,8 @@ namespace Microsoft.ML.Trainers.LightGbm
         {
             Host.AssertValue(ch);
             ch.Assert(PredictionKind == PredictionKind.MulticlassClassification);
-            ch.Assert(_numClass > 1);
-            GbmOptions["num_class"] = _numClass;
+            ch.Assert(_numberOfClassesIncludingNan > 1);
+            GbmOptions["num_class"] = _numberOfClassesIncludingNan;
             bool useSoftmax = false;
 
             if (LightGbmTrainerOptions.UseSoftmax.HasValue)
@@ -303,11 +357,14 @@ namespace Microsoft.ML.Trainers.LightGbm
 
         private protected override SchemaShape.Column[] GetOutputColumnsCore(SchemaShape inputSchema)
         {
-            bool success = inputSchema.TryFindColumn(LabelColumn.Name, out var labelCol);
-            Contracts.Assert(success);
+            SchemaShape.Column labelCol = default;
+            if (LightGbmTrainerOptions.LightGbmModel == null)
+            {
+                bool success = inputSchema.TryFindColumn(LabelColumn.Name, out labelCol);
+                Contracts.Assert(success);
+            }
 
-            var metadata = new SchemaShape(labelCol.Annotations.Where(x => x.Name == AnnotationUtils.Kinds.KeyValues)
-                .Concat(AnnotationUtils.GetTrainerOutputAnnotation()));
+            var metadata = LightGbmTrainerOptions.LightGbmModel == null ? new SchemaShape(labelCol.Annotations.Where(x => x.Name == AnnotationUtils.Kinds.KeyValues).Concat(AnnotationUtils.GetTrainerOutputAnnotation())) : new SchemaShape(AnnotationUtils.GetTrainerOutputAnnotation());
             return new[]
             {
                 new SchemaShape.Column(DefaultColumnNames.Score, SchemaShape.Column.VectorKind.Vector, NumberDataViewType.Single, false, new SchemaShape(AnnotationUtils.AnnotationsForMulticlassScoreColumn(labelCol))),

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -42,7 +42,7 @@ namespace Microsoft.ML.Internal.Utilities
             return result;
         }
 
-        private static double _vScale = 2 * Math.Sqrt(2 / Math.E);
+        private static readonly double _vScale = 2 * Math.Sqrt(2 / Math.E);
 
         /// <summary>
         /// Returns a number sampled from a zero-mean, unit variance Gaussian
@@ -242,7 +242,7 @@ namespace Microsoft.ML.Internal.Utilities
             // n*p at which we switch algorithms
             private const int NPThresh = 10;
 
-            private static double[] _fctab = new double[] {
+            private static readonly double[] _fctab = new double[] {
                 0.08106146679532726, 0.04134069595540929, 0.02767792568499834,
                 0.02079067210376509, 0.01664469118982119, 0.01387612882307075,
                 0.01189670994589177, 0.01041126526197209, 0.009255462182712733,
@@ -320,7 +320,7 @@ namespace Microsoft.ML.Internal.Utilities
                 double a2 = 2.0 * a;
                 double c = np + 0.5;
 
-                // don't initialize these yet, becuase we may not need them
+                // don't initialize these yet, because we may not need them
                 double alpha = double.NaN;
                 double r = double.NaN;
                 double nr = double.NaN;

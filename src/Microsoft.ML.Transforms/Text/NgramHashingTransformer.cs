@@ -184,7 +184,7 @@ namespace Microsoft.ML.Transforms.Text
             foreach (var column in _columns)
             {
                 if (column.MaximumNumberOfInverts != 0)
-                    throw Host.ExceptParam(nameof(columns), $"Found colunm with {nameof(column.MaximumNumberOfInverts)} set to non zero value, please use { nameof(NgramHashingEstimator)} instead");
+                    throw Host.ExceptParam(nameof(columns), $"Found colunm with {nameof(column.MaximumNumberOfInverts)} set to non zero value, please use {nameof(NgramHashingEstimator)} instead");
             }
         }
 
@@ -355,7 +355,7 @@ namespace Microsoft.ML.Transforms.Text
                         item.MaximumNumberOfInverts ?? options.MaximumNumberOfInverts,
                         item.RehashUnigrams ?? options.RehashUnigrams
                         );
-                };
+                }
             }
             return new NgramHashingTransformer(env, input, cols).MakeDataTransform(input);
         }
@@ -691,7 +691,7 @@ namespace Microsoft.ML.Transforms.Text
                 public NGram(uint[] ngram, int lim, int srcCol)
                 {
                     Contracts.AssertValue(ngram);
-                    Contracts.Assert(1 <= lim & lim <= ngram.Length);
+                    Contracts.Assert(1 <= lim && lim <= ngram.Length);
                     Contracts.Assert(0 <= srcCol);
 
                     Grams = ngram;
@@ -868,6 +868,7 @@ namespace Microsoft.ML.Transforms.Text
     /// | Does this estimator need to look at the data to train its parameters? | Yes |
     /// | Input column data type | Vector of [key](xref:Microsoft.ML.Data.KeyDataViewType) type. |
     /// | Output column data type | Vector of known size of <xref:System.Single> |
+    /// | Exportable to ONNX | No |
     ///
     /// The resulting <xref:Microsoft.ML.Transforms.Text.NgramHashingTransformer> creates a new column, named as specified in the output column name parameters, and
     /// produces a vector of n-gram counts (sequences of consecutive words of length 1-n) from a given data.

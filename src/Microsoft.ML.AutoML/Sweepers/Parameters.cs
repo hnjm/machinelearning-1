@@ -1,9 +1,10 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Microsoft.ML.Internal.Utilities;
 
 namespace Microsoft.ML.AutoML
@@ -16,7 +17,7 @@ namespace Microsoft.ML.AutoML
 
     internal abstract class NumericParamArguments : BaseParamArguments
     {
-        // Number of steps for grid runthrough.
+        // Number of steps for grid run-through.
         public int NumSteps;
 
         // Amount of increment between steps (multiplicative if log).
@@ -82,7 +83,7 @@ namespace Microsoft.ML.AutoML
         {
             _name = name;
             _value = value;
-            _valueText = _value.ToString("D");
+            _valueText = _value.ToString("D", CultureInfo.InvariantCulture);
         }
 
         public bool Equals(IParameterValue other)
@@ -128,7 +129,7 @@ namespace Microsoft.ML.AutoML
             Runtime.Contracts.Assert(!float.IsNaN(value));
             _name = name;
             _value = value;
-            _valueText = _value.ToString("R");
+            _valueText = _value.ToString("R", CultureInfo.InvariantCulture);
         }
 
         public bool Equals(IParameterValue other)

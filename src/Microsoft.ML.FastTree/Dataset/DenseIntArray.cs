@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -24,10 +24,11 @@ namespace Microsoft.ML.Trainers.FastTree
     {
         public override IntArrayType Type { get { return IntArrayType.Dense; } }
 
-        protected DenseIntArray(int length)
+        protected DenseIntArray(int length, PerformSumup sumupHandler = null)
         {
             Contracts.Assert(length >= 0);
             Length = length;
+            SumupHandler = sumupHandler;
         }
 
         public override int Length { get; }
@@ -70,7 +71,6 @@ namespace Microsoft.ML.Trainers.FastTree
             return newArrays;
         }
 
-#if USE_FASTTREENATIVE
         internal const string NativePath = "FastTreeNative";
         [DllImport(NativePath), SuppressUnmanagedCodeSecurity]
         private static extern unsafe int C_Sumup_float(
@@ -110,8 +110,6 @@ namespace Microsoft.ML.Trainers.FastTree
                 }
             }
         }
-
-#endif
 
         public override IIntArrayForwardIndexer GetIndexer()
         {
@@ -168,7 +166,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// Writes a binary representation of this class to a byte buffer, at a given position.
         /// The position is incremented to the end of the representation
         /// </summary>
-        /// <param name="buffer">a byte array where the binary represenaion is written</param>
+        /// <param name="buffer">a byte array where the binary representation is written</param>
         /// <param name="position">the position in the byte array</param>
         public override void ToByteArray(byte[] buffer, ref int position)
         {
@@ -207,7 +205,7 @@ namespace Microsoft.ML.Trainers.FastTree
     {
         private const int _bits = 10;
         private const int _mask = (1 << _bits) - 1;
-        private uint[] _data;
+        private readonly uint[] _data;
 
         public override IntArrayBits BitsPerItem { get { return IntArrayBits.Bits10; } }
 
@@ -279,7 +277,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// Writes a binary representation of this class to a byte buffer, at a given position.
         /// The position is incremented to the end of the representation
         /// </summary>
-        /// <param name="buffer">a byte array where the binary represenaion is written</param>
+        /// <param name="buffer">a byte array where the binary representation is written</param>
         /// <param name="position">the position in the byte array</param>
         public override void ToByteArray(byte[] buffer, ref int position)
         {
@@ -383,7 +381,7 @@ namespace Microsoft.ML.Trainers.FastTree
     /// 0-bit array only represents the value -1</remarks>
     internal sealed class Dense8BitIntArray : DenseDataCallbackIntArray
     {
-        private byte[] _data;
+        private readonly byte[] _data;
 
         public override IntArrayBits BitsPerItem { get { return IntArrayBits.Bits8; } }
 
@@ -391,18 +389,21 @@ namespace Microsoft.ML.Trainers.FastTree
             : base(len)
         {
             _data = new byte[len];
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public Dense8BitIntArray(byte[] buffer, ref int position)
             : base(buffer.ToInt(ref position))
         {
             _data = buffer.ToByteArray(ref position);
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public Dense8BitIntArray(int len, IEnumerable<int> values)
             : base(len)
         {
             _data = values.Select(i => (byte)i).ToArray(len);
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         /// <summary>
@@ -417,7 +418,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// Writes a binary representation of this class to a byte buffer, at a given position.
         /// The position is incremented to the end of the representation
         /// </summary>
-        /// <param name="buffer">a byte array where the binary represenaion is written</param>
+        /// <param name="buffer">a byte array where the binary representation is written</param>
         /// <param name="position">the position in the byte array</param>
         public override void ToByteArray(byte[] buffer, ref int position)
         {
@@ -445,8 +446,7 @@ namespace Microsoft.ML.Trainers.FastTree
             }
         }
 
-#if USE_FASTTREENATIVE
-        public override void Sumup(SumupInputData input, FeatureHistogram histogram)
+        private void SumupNative(SumupInputData input, FeatureHistogram histogram)
         {
             unsafe
             {
@@ -456,7 +456,8 @@ namespace Microsoft.ML.Trainers.FastTree
                 }
             }
         }
-#endif
+
+        public override void Sumup(SumupInputData input, FeatureHistogram histogram) => SumupHandler(input, histogram);
     }
 
     /// <summary>
@@ -467,7 +468,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// <summary>
         /// For a given byte, the high 4 bits is the first value, the low 4 bits is the next value.
         /// </summary>
-        private byte[] _data;
+        private readonly byte[] _data;
 
         public override IntArrayBits BitsPerItem { get { return IntArrayBits.Bits4; } }
 
@@ -475,12 +476,14 @@ namespace Microsoft.ML.Trainers.FastTree
             : base(len)
         {
             _data = new byte[(len + 1) / 2]; // Even length = half the bytes. Odd length = half the bytes+0.5.
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public Dense4BitIntArray(int len, IEnumerable<int> values)
             : base(len)
         {
             _data = new byte[(len + 1) / 2];
+            SetupSumupHandler(SumupNative, base.Sumup);
 
             int currentIndex = 0;
             bool upper = true;
@@ -505,6 +508,7 @@ namespace Microsoft.ML.Trainers.FastTree
             : base(buffer.ToInt(ref position))
         {
             _data = buffer.ToByteArray(ref position);
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         /// <summary>
@@ -519,7 +523,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// Writes a binary representation of this class to a byte buffer, at a given position.
         /// The position is incremented to the end of the representation
         /// </summary>
-        /// <param name="buffer">a byte array where the binary represenaion is written</param>
+        /// <param name="buffer">a byte array where the binary representation is written</param>
         /// <param name="position">the position in the byte array</param>
         public override void ToByteArray(byte[] buffer, ref int position)
         {
@@ -565,8 +569,7 @@ namespace Microsoft.ML.Trainers.FastTree
             }
         }
 
-#if USE_FASTTREENATIVE
-        public override void Sumup(SumupInputData input, FeatureHistogram histogram)
+        public void SumupNative(SumupInputData input, FeatureHistogram histogram)
         {
             unsafe
             {
@@ -576,7 +579,8 @@ namespace Microsoft.ML.Trainers.FastTree
                 }
             }
         }
-#endif
+
+        public override void Sumup(SumupInputData input, FeatureHistogram histogram) => SumupHandler(input, histogram);
     }
 
     /// <summary>
@@ -584,7 +588,7 @@ namespace Microsoft.ML.Trainers.FastTree
     /// </summary>
     internal sealed class Dense16BitIntArray : DenseDataCallbackIntArray
     {
-        private ushort[] _data;
+        private readonly ushort[] _data;
 
         public override IntArrayBits BitsPerItem { get { return IntArrayBits.Bits16; } }
 
@@ -592,18 +596,21 @@ namespace Microsoft.ML.Trainers.FastTree
             : base(len)
         {
             _data = new ushort[len];
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public Dense16BitIntArray(int len, IEnumerable<int> values)
             : base(len)
         {
             _data = values.Select(i => (ushort)i).ToArray(len);
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public Dense16BitIntArray(byte[] buffer, ref int position)
             : base(buffer.ToInt(ref position))
         {
             _data = buffer.ToUShortArray(ref position);
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public override unsafe void Callback(Action<IntPtr> callback)
@@ -626,7 +633,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// Writes a binary representation of this class to a byte buffer, at a given position.
         /// The position is incremented to the end of the representation
         /// </summary>
-        /// <param name="buffer">a byte array where the binary represenaion is written</param>
+        /// <param name="buffer">a byte array where the binary representation is written</param>
         /// <param name="position">the position in the byte array</param>
         public override void ToByteArray(byte[] buffer, ref int position)
         {
@@ -648,8 +655,8 @@ namespace Microsoft.ML.Trainers.FastTree
                 _data[index] = (ushort)value;
             }
         }
-#if USE_FASTTREENATIVE
-        public override void Sumup(SumupInputData input, FeatureHistogram histogram)
+
+        public void SumupNative(SumupInputData input, FeatureHistogram histogram)
         {
             unsafe
             {
@@ -660,7 +667,9 @@ namespace Microsoft.ML.Trainers.FastTree
                 }
             }
         }
-#endif
+
+        public override void Sumup(SumupInputData input, FeatureHistogram histogram) => SumupHandler(input, histogram);
+
     }
 
     /// <summary>
@@ -668,7 +677,7 @@ namespace Microsoft.ML.Trainers.FastTree
     /// </summary>
     internal sealed class Dense32BitIntArray : DenseDataCallbackIntArray
     {
-        private int[] _data;
+        private readonly int[] _data;
 
         public override IntArrayBits BitsPerItem { get { return IntArrayBits.Bits32; } }
 
@@ -676,18 +685,21 @@ namespace Microsoft.ML.Trainers.FastTree
             : base(len)
         {
             _data = new int[len];
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public Dense32BitIntArray(int len, IEnumerable<int> values)
             : base(len)
         {
             _data = values.ToArray(len);
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public Dense32BitIntArray(byte[] buffer, ref int position)
             : base(buffer.ToInt(ref position))
         {
             _data = buffer.ToIntArray(ref position);
+            SetupSumupHandler(SumupNative, base.Sumup);
         }
 
         public override unsafe void Callback(Action<IntPtr> callback)
@@ -710,7 +722,7 @@ namespace Microsoft.ML.Trainers.FastTree
         /// Writes a binary representation of this class to a byte buffer, at a given position.
         /// The position is incremented to the end of the representation
         /// </summary>
-        /// <param name="buffer">a byte array where the binary represenaion is written</param>
+        /// <param name="buffer">a byte array where the binary representation is written</param>
         /// <param name="position">the position in the byte array</param>
         public override void ToByteArray(byte[] buffer, ref int position)
         {
@@ -733,8 +745,7 @@ namespace Microsoft.ML.Trainers.FastTree
             }
         }
 
-#if USE_FASTTREENATIVE
-        public override void Sumup(SumupInputData input, FeatureHistogram histogram)
+        public void SumupNative(SumupInputData input, FeatureHistogram histogram)
         {
             unsafe
             {
@@ -745,6 +756,7 @@ namespace Microsoft.ML.Trainers.FastTree
                 }
             }
         }
-#endif
+
+        public override void Sumup(SumupInputData input, FeatureHistogram histogram) => SumupHandler(input, histogram);
     }
 }

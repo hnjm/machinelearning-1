@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -180,7 +180,7 @@ namespace Microsoft.ML.RunTests
             [Argument(ArgumentType.AtMostOnce)]
             public int once = 1;
 
-            [Argument(ArgumentType.LastOccurenceWins)]
+            [Argument(ArgumentType.LastOccurrenceWins)]
             public int last = 2;
 
             [Argument(ArgumentType.Multiple)]
@@ -198,7 +198,7 @@ namespace Microsoft.ML.RunTests
             [Argument(ArgumentType.Multiple, SignatureType = typeof(SignatureDataSaver))]
             public IComponentFactory<IDataSaver> sub = (IComponentFactory<IDataSaver>)CmdParser.CreateComponentFactory(
                 typeof(IComponentFactory<IDataSaver>),
-                typeof(SignatureDataSaver), 
+                typeof(SignatureDataSaver),
                 "Text");
 
             [Argument(ArgumentType.Multiple, SignatureType = typeof(SignatureDataSaver))]

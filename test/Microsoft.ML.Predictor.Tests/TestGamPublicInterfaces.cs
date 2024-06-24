@@ -1,19 +1,25 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
 using System.Linq;
 using Microsoft.ML.Internal.Utilities;
+using Microsoft.ML.TestFramework;
 using Microsoft.ML.Trainers.FastTree;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.ML.RunTests
 {
-    public class TestGamPublicInterfaces
+    public class TestGamPublicInterfaces : BaseTestClass
     {
+        public TestGamPublicInterfaces(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         [TestCategory("FastTree")]
-        public void TestGamDirectInstatiation()
+        public void TestGamDirectInstantiation()
         {
             var mlContext = new MLContext(seed: 1);
 
@@ -37,7 +43,7 @@ namespace Microsoft.ML.RunTests
             Assert.Equal(binUpperBounds.Length, gam.NumberOfShapeFunctions);
 
             // Check the intercept
-            Assert.Equal(intercept, gam.Bias, 6);
+            Assert.Equal(intercept, gam.Bias, 0.000001);
 
             // Check that the binUpperBounds were made correctly
             CheckArrayOfArrayEquality(binUpperBounds, gam.GetBinUpperBounds());

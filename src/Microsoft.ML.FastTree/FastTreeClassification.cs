@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -84,7 +84,7 @@ namespace Microsoft.ML.Trainers.FastTree
             ctx.SetVersionInfo(GetVersionInfo());
         }
 
-        private static IPredictorProducing<float> Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static IPredictorProducing<float> Create(IHostEnvironment env, ModelLoadContext ctx)
         {
             Contracts.CheckValue(env, nameof(env));
             env.CheckValue(ctx, nameof(ctx));
@@ -117,6 +117,7 @@ namespace Microsoft.ML.Trainers.FastTree
     /// | Is normalization required? | No |
     /// | Is caching required? | No |
     /// | Required NuGet in addition to Microsoft.ML | Microsoft.ML.FastTree |
+    /// | Exportable to ONNX | Yes |
     ///
     /// [!include[algorithm](~/../docs/samples/docs/api-reference/algo-details-fasttree.md)]
     /// ]]>
@@ -139,7 +140,7 @@ namespace Microsoft.ML.Trainers.FastTree
         internal const string ShortName = "ftc";
 
         private bool[] _trainSetLabels;
-        private double _sigmoidParameter;
+        private readonly double _sigmoidParameter;
 
         /// <summary>
         /// Initializes a new instance of <see cref="FastTreeBinaryTrainer"/>
@@ -250,7 +251,7 @@ namespace Microsoft.ML.Trainers.FastTree
         private protected override void PrepareLabels(IChannel ch)
         {
             _trainSetLabels = GetClassificationLabelsFromRatings(TrainSet).ToArray(TrainSet.NumDocs);
-            //Here we set regression labels to what is in bin file if the values were not overriden with floats
+            //Here we set regression labels to what is in bin file if the values were not overridden with floats
         }
 
         private protected override Test ConstructTestForTrainingData()
@@ -291,7 +292,7 @@ namespace Microsoft.ML.Trainers.FastTree
                 }
                 else
                 {
-                    //use tollerant stopping condition
+                    //use tolerant stopping condition
                     PruningTest = new TestWindowWithTolerance(ValidTest, 0, FastTreeTrainerOptions.PruningWindowSize, FastTreeTrainerOptions.PruningThreshold);
                 }
             }
@@ -324,7 +325,7 @@ namespace Microsoft.ML.Trainers.FastTree
             private readonly bool _unbalancedSets; //Should we use balanced or unbalanced loss function
             private readonly long _npos;
             private readonly long _nneg;
-            private IParallelTraining _parallelTraining;
+            private readonly IParallelTraining _parallelTraining;
             private readonly double _sigmoidParameter; // Parameter for scaling the loss
 
             public ObjectiveImpl(

@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -159,7 +159,7 @@ namespace Microsoft.ML.Data.IO
             // Throws an exception if T is neither a TimeSpan nor a NumberType.
             private static DataViewType UnsafeColumnType(Type type)
             {
-                return type == typeof(TimeSpan) ?  TimeSpanDataViewType.Instance :
+                return type == typeof(TimeSpan) ? TimeSpanDataViewType.Instance :
                     type == typeof(DataViewRowId) ? (DataViewType)RowIdDataViewType.Instance :
                     ColumnTypeExtensions.NumberTypeFromType(type);
             }
@@ -293,7 +293,7 @@ namespace Microsoft.ML.Data.IO
             // *** Binary block format ***
             // int: Number of entries.
             // int[entries]: The non-decreasing end-boundary character index array, with high bit set for "missing" values.
-            // string: The UTF-8 encoded string, with the standard LEB128 byte-length preceeding it.
+            // string: The UTF-8 encoded string, with the standard LEB128 byte-length preceding it.
 
             public TextCodec(CodecFactory factory)
                 : base(factory, TextDataViewType.Instance)
@@ -313,7 +313,7 @@ namespace Microsoft.ML.Data.IO
             private sealed class Writer : ValueWriterBase<ReadOnlyMemory<char>>
             {
                 private StringBuilder _builder;
-                private List<int> _boundaries;
+                private readonly List<int> _boundaries;
 
                 public Writer(TextCodec codec, Stream stream)
                     : base(codec.Factory, stream)
@@ -353,7 +353,7 @@ namespace Microsoft.ML.Data.IO
                 private readonly int _entries;
                 private readonly int[] _boundaries;
                 private int _index;
-                private string _text;
+                private readonly string _text;
 
                 public Reader(TextCodec codec, Stream stream, int items)
                     : base(codec.Factory, stream)
@@ -387,7 +387,7 @@ namespace Microsoft.ML.Data.IO
                         value = _text.AsMemory().Slice(start, (b & LengthMask) - start);
                     else
                     {
-                        //For backward compatiblity when NA values existed, treat them
+                        //For backward compatibility when NA values existed, treat them
                         //as empty string.
                         value = ReadOnlyMemory<char>.Empty;
                     }

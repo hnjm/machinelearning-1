@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Collections.Generic;
+using System.IO;
 using Microsoft.ML;
 using Microsoft.ML.CommandLine;
 using Microsoft.ML.Data;
@@ -66,7 +67,7 @@ namespace Microsoft.ML.Trainers.LightGbm
             ctx.SetVersionInfo(GetVersionInfo());
         }
 
-        private static LightGbmRegressionModelParameters Create(IHostEnvironment env, ModelLoadContext ctx)
+        internal static LightGbmRegressionModelParameters Create(IHostEnvironment env, ModelLoadContext ctx)
         {
             Contracts.CheckValue(env, nameof(env));
             env.CheckValue(ctx, nameof(ctx));
@@ -92,6 +93,7 @@ namespace Microsoft.ML.Trainers.LightGbm
     /// | Is normalization required? | No |
     /// | Is caching required? | No |
     /// | Required NuGet in addition to Microsoft.ML | Microsoft.ML.LightGbm |
+    /// | Exportable to ONNX | Yes |
     ///
     /// [!include[algorithm](~/../docs/samples/docs/api-reference/algo-details-lightgbm.md)]
     /// ]]>
@@ -174,20 +176,40 @@ namespace Microsoft.ML.Trainers.LightGbm
             double? learningRate = null,
             int numberOfIterations = Defaults.NumberOfIterations)
             : this(env, new Options()
-                  {
-                    LabelColumnName = labelColumnName,
-                    FeatureColumnName = featureColumnName,
-                    ExampleWeightColumnName = exampleWeightColumnName,
-                    NumberOfLeaves = numberOfLeaves,
-                    MinimumExampleCountPerLeaf = minimumExampleCountPerLeaf,
-                    LearningRate = learningRate,
-                    NumberOfIterations = numberOfIterations
-                   })
+            {
+                LabelColumnName = labelColumnName,
+                FeatureColumnName = featureColumnName,
+                ExampleWeightColumnName = exampleWeightColumnName,
+                NumberOfLeaves = numberOfLeaves,
+                MinimumExampleCountPerLeaf = minimumExampleCountPerLeaf,
+                LearningRate = learningRate,
+                NumberOfIterations = numberOfIterations
+            })
         {
         }
 
         internal LightGbmRegressionTrainer(IHostEnvironment env, Options options)
              : base(env, LoadNameValue, options, TrainerUtils.MakeR4ScalarColumn(options.LabelColumnName))
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of <see cref="LightGbmRegressionTrainer"/>
+        /// </summary>
+        /// <param name="env">The private instance of <see cref="IHostEnvironment"/>.</param>
+        /// <param name="lightGbmModel"> A pre-trained <see cref="System.IO.Stream"/> of a LightGBM model file inferencing</param>
+        /// <param name="featureColumnName">The name of the feature column.</param>
+        internal LightGbmRegressionTrainer(IHostEnvironment env,
+            Stream lightGbmModel,
+            string featureColumnName = DefaultColumnNames.Features)
+            : base(env,
+                  LoadNameValue,
+                  new Options()
+                  {
+                      FeatureColumnName = featureColumnName,
+                      LightGbmModel = lightGbmModel
+                  },
+                  new SchemaShape.Column())
         {
         }
 
@@ -203,11 +225,16 @@ namespace Microsoft.ML.Trainers.LightGbm
         {
             Host.AssertValue(ch);
             base.CheckDataValid(ch, data);
-            var labelType = data.Schema.Label.Value.Type;
-            if (!(labelType is BooleanDataViewType || labelType is KeyDataViewType || labelType == NumberDataViewType.Single))
+
+            // If using a pre-trained model file we don't need a label column
+            if (LightGbmTrainerOptions.LightGbmModel == null)
             {
-                throw ch.ExceptParam(nameof(data),
-                    $"Label column '{data.Schema.Label.Value.Name}' is of type '{labelType.RawType}', but must be an unsigned int, boolean or float.");
+                var labelType = data.Schema.Label.Value.Type;
+                if (!(labelType is BooleanDataViewType || labelType is KeyDataViewType || labelType == NumberDataViewType.Single))
+                {
+                    throw ch.ExceptParam(nameof(data),
+                        $"Label column '{data.Schema.Label.Value.Name}' is of type '{labelType.RawType}', but must be an unsigned int, boolean or float.");
+                }
             }
         }
 

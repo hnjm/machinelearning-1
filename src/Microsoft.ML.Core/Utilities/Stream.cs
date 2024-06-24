@@ -1,4 +1,4 @@
-// Licensed to the .NET Foundation under one or more agreements.
+﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -146,7 +146,7 @@ namespace Microsoft.ML.Internal.Utilities
         {
             Contracts.AssertValue(writer);
             Contracts.AssertValueOrNull(values);
-            Contracts.Assert(0 <= count & count <= Utils.Size(values));
+            Contracts.Assert(0 <= count && count <= Utils.Size(values));
 
             writer.Write(count);
             writer.Write(values, 0, count);
@@ -159,7 +159,7 @@ namespace Microsoft.ML.Internal.Utilities
         {
             Contracts.AssertValue(writer);
             Contracts.AssertValueOrNull(values);
-            Contracts.Assert(0 <= count & count <= Utils.Size(values));
+            Contracts.Assert(0 <= count && count <= Utils.Size(values));
 
             writer.Write(values, 0, count);
         }
@@ -884,6 +884,26 @@ namespace Microsoft.ML.Internal.Utilities
                 Contracts.CheckIO(read > 0, "Unexpected failure to read");
                 pos += read;
             }
+        }
+
+        /// <summary>
+        /// If this return it will try to read exactly length bytes.
+        /// </summary>
+        /// <param name="s">The stream</param>
+        /// <param name="buff">The buffer into which to write the data.</param>
+        /// <param name="offset">The offset of the output array into which to write.</param>
+        /// <param name="length">The number of bytes to read.</param>
+        public static int TryReadBlock(this Stream s, byte[] buff, int offset, int length)
+        {
+            int pos = 0;
+            int read = -1;
+            while (pos != length && read != 0)
+            {
+                read = s.Read(buff, offset + pos, length - pos);
+                pos += read;
+            }
+
+            return pos;
         }
 
         /// <summary>
